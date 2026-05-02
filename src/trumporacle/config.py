@@ -22,6 +22,10 @@ class Settings(BaseSettings):
         validation_alias="DATABASE_URL",
     )
     anthropic_api_key: str | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
+    anthropic_model: str = Field(
+        default="claude-haiku-4-5",
+        validation_alias="ANTHROPIC_MODEL",
+    )
     telegram_api_id: int | None = Field(default=None, validation_alias="TELEGRAM_API_ID")
     telegram_api_hash: str | None = Field(default=None, validation_alias="TELEGRAM_API_HASH")
     artifacts_dir: str = Field(default="artifacts", validation_alias="ARTIFACTS_DIR")
@@ -32,6 +36,24 @@ class Settings(BaseSettings):
     discord_webhook_url: str | None = Field(default=None, validation_alias="DISCORD_WEBHOOK_URL")
     log_json: bool = Field(default=False, validation_alias="LOG_JSON")
     truth_social_rss_url: str | None = Field(default=None, validation_alias="TRUTH_SOCIAL_RSS_URL")
+
+    @field_validator(
+        "anthropic_api_key",
+        "telegram_api_id",
+        "telegram_api_hash",
+        "discord_webhook_url",
+        "truth_social_rss_url",
+        mode="before",
+    )
+    @classmethod
+    def empty_env_as_none(cls, v: object) -> object:
+        """``.env`` often sets ``KEY=`` with no value → empty string; treat as unset."""
+
+        if v is None:
+            return None
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @field_validator("database_url", mode="before")
     @classmethod

@@ -27,8 +27,15 @@ def _needs_ssl(url: str) -> bool:
     return "neon.tech" in lowered or "sslmode=require" in lowered
 
 
+_LIBPQ_ONLY_PARAMS = frozenset({"sslmode", "channel_binding"})
+
+
 def _asyncpg_url(url: str) -> str:
-    """Build asyncpg URL; drop sslmode query (asyncpg uses connect_args ssl)."""
+    """Build asyncpg URL; strip libpq-only query params asyncpg rejects.
+
+    SSL is reapplied via ``_async_connect_args`` (``ssl=True``); SCRAM channel
+    binding is handled implicitly by asyncpg when the server requests it.
+    """
 
     if url.startswith("postgresql+psycopg://"):
         out = url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
@@ -36,10 +43,12 @@ def _asyncpg_url(url: str) -> str:
         out = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     else:
         out = url
-    if not _needs_ssl(url):
-        return out
     parsed = urlparse(out)
-    query = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k != "sslmode"]
+    query = [
+        (k, v)
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+        if k not in _LIBPQ_ONLY_PARAMS
+    ]
     new_q = urlencode(query)
     return urlunparse(parsed._replace(query=new_q))
 

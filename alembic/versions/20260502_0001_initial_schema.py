@@ -23,13 +23,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
     op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-
-    bind = op.get_bind()
-    ts_avail = bind.execute(
-        sa.text("SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'")
-    ).scalar()
-    if ts_avail:
-        op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;")
+    # TimescaleDB: do not CREATE EXTENSION here. Managed DBs (Neon, etc.) preload it and
+    # repeating CREATE in-session raises "already been loaded with another version".
+    # Local Docker enables it in docker/db/init-extensions.sql on first init.
 
     op.create_table(
         "sources",
@@ -73,24 +69,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["source_id"], ["sources.id"], name="fk_raw_items_source"),
         sa.PrimaryKeyConstraint("id"),
     )
-
-    bind = op.get_bind()
-    has_ts = bind.execute(
-        sa.text(
-            "SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb' "
-            "AND installed_version IS NOT NULL"
-        )
-    ).scalar()
-    if has_ts:
-        op.execute(
-            """
-            SELECT public.create_hypertable(
-                'raw_items',
-                'published_at',
-                if_not_exists => TRUE
-            );
-            """
-        )
+    # Timescale hypertable omitted: PK(id) without ``published_at`` violates Timescale’s rule
+    # that UNIQUE/PK include the partition column; fixing it requires a composite FK from ``items``.
+    # ``raw_items`` stays a normal table (Neon-friendly); BRIN/partitioning can be a later migration.
 
     op.create_index(
         "ix_raw_items_source_external",

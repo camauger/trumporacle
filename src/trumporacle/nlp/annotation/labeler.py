@@ -27,7 +27,7 @@ def _cache_key(text: str, model: str) -> str:
 def annotate_valence(
     text: str,
     *,
-    model: str = "claude-3-5-haiku-20241022",
+    model: str | None = None,
 ) -> ValenceAnnotationResult | None:
     """Return structured annotation or None if API key missing."""
 
@@ -36,15 +36,19 @@ def annotate_valence(
         logger.warning("ANTHROPIC_API_KEY not set; skipping LLM annotation")
         return None
 
+    resolved_model = model or settings.anthropic_model
     cache = Cache(str(_cache_dir()))
-    key = _cache_key(text, model)
+    key = _cache_key(text, resolved_model)
     cached = cache.get(key)
-    if isinstance(cached, ValenceAnnotationResult):
-        return cached
+    if isinstance(cached, str):
+        try:
+            return ValenceAnnotationResult.model_validate_json(cached)
+        except ValueError:
+            pass
 
     client = instructor.from_anthropic(Anthropic(api_key=settings.anthropic_api_key))
     result = client.chat.completions.create(
-        model=model,
+        model=resolved_model,
         max_tokens=1024,
         response_model=ValenceAnnotationResult,
         messages=[
@@ -52,5 +56,5 @@ def annotate_valence(
             {"role": "user", "content": build_user_prompt(text)},
         ],
     )
-    cache.set(key, result)
-    return result
+    cache.set(key, result.model_dump_json())
+    return ValenceAnnotationResult.model_validate(result.model_dump())

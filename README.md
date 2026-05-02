@@ -31,7 +31,7 @@ uv run pytest
 uv run uvicorn trumporacle.dashboard.api.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Copy `.env.example` to `.env` and set secrets (`ANTHROPIC_API_KEY`, `TRUTH_SOCIAL_RSS_URL`, etc.). Alembic resolves `DATABASE_URL` the same way as the app: shell override if set, otherwise values from `.env` in the project root.
+Copy `.env.example` to `.env` and set secrets (`ANTHROPIC_API_KEY`, `DATABASE_URL`, etc.). For Truth ingestion, **`TRUTH_SOCIAL_RSS_URL`** defaults in `.env.example` to **[Trump’s Truth](https://www.trumpstruth.org/)** (RSS archive by Defending Democracy Together) — not an official Truth Social endpoint. Append **`?start_date=…&end_date=…`** on that URL for a date-bounded backfill window. Alembic resolves `DATABASE_URL` the same way as the app: shell override if set, otherwise values from `.env` in the project root.
 
 **5432 already in use / password errors:** another Postgres may be bound to `127.0.0.1:5432` with different credentials. Start Docker Desktop and run `docker compose up -d` for this project’s DB, stop the other service, or change the host port mapping in `docker-compose.yml`.
 

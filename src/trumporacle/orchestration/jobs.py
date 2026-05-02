@@ -19,6 +19,25 @@ async def job_ingest_truth_social() -> None:
         logger.exception("job_ingest_truth_social failed")
 
 
+async def job_ingest_rss_ecosystem() -> None:
+    """Poll ecosystem RSS feeds (Breitbart, Gateway Pundit, Federalist)."""
+
+    try:
+        from trumporacle.config import get_settings
+        from trumporacle.ingestion.rss.pipeline import ingest_rss_ecosystem_once
+
+        annotate = bool(get_settings().anthropic_api_key)
+        summary = await ingest_rss_ecosystem_once(annotate_with_llm=annotate)
+        logger.debug(
+            "job_ingest_rss_ecosystem raw={} ann={} errors={}",
+            summary["total_new_raw"],
+            summary["total_annotations"],
+            summary["fetch_errors"],
+        )
+    except Exception:
+        logger.exception("job_ingest_rss_ecosystem failed")
+
+
 async def job_predict_windows() -> None:
     """Write baseline MVP prediction for the current 2h window if absent."""
 

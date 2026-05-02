@@ -29,7 +29,7 @@ def _parse_dt(entry: Any) -> datetime:
 
 
 class TruthSocialRSSConnector(SourceConnector):
-    """Fetch posts via a public RSS bridge URL (set TRUTH_SOCIAL_RSS_URL)."""
+    """Fetch posts via RSS URL in ``TRUTH_SOCIAL_RSS_URL`` (e.g. Trump's Truth feed)."""
 
     def __init__(
         self,

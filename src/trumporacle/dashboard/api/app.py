@@ -30,10 +30,11 @@ async def lifespan(app: FastAPI):
     global _scheduler
     _scheduler = AsyncIOScheduler()
     _scheduler.add_job(jobs.job_ingest_truth_social, "interval", minutes=15, id="ingest")
+    _scheduler.add_job(jobs.job_ingest_rss_ecosystem, "interval", minutes=15, id="ingest_rss")
     _scheduler.add_job(jobs.job_predict_windows, "interval", minutes=15, id="predict")
     _scheduler.add_job(jobs.job_materialize_outcomes, "interval", minutes=5, id="outcomes")
     _scheduler.start()
-    logger.info("APScheduler started (15m ingest/predict, 5m outcomes)")
+    logger.info("APScheduler started (15m ingest+rss+predict, 5m outcomes)")
     yield
     if _scheduler:
         _scheduler.shutdown(wait=False)
