@@ -1,0 +1,22 @@
+# Local Postgres: TimescaleDB + pgvector + pg_trgm (TRUMPORACLE stack)
+services:
+  db:
+    build:
+      context: ./docker/db
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_USER: trumporacle
+      POSTGRES_PASSWORD: trumporacle
+      POSTGRES_DB: trumporacle
+    ports:
+      - "5432:5432"
+    volumes:
+      - trumporacle_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trumporacle -d trumporacle"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  trumporacle_pgdata:

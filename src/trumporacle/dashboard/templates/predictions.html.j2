@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{{ title }} — TRUMPORACLE</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body>
+  <nav><a href="/">Home</a> · <a href="/predictions">Predictions</a> · <a href="/health">Health</a></nav>
+  <h1>{{ title }}</h1>
+  <p>MVP baseline rows (latest 40). Version {{ version }}.</p>
+  <table border="1" cellpadding="6" cellspacing="0">
+    <thead>
+      <tr>
+        <th>made_at</th>
+        <th>window</th>
+        <th>model</th>
+        <th>P(v≥4)</th>
+        <th>P(v≥5)</th>
+        <th>P(post)</th>
+        <th>feature_hash</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.prediction_made_at }}</td>
+        <td>{{ r.window_start }} → {{ r.window_end }}</td>
+        <td>{{ r.model_version }}</td>
+        <td>{{ (r.c2_4_prob or 0)|round(3) }}</td>
+        <td>{{ (r.c2_5_prob or 0)|round(3) }}</td>
+        <td>{{ (r.c4_prob or 0)|round(3) }}</td>
+        <td><code>{{ (r.feature_hash or "")[:16] }}…</code></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">No predictions yet — run <code>trumporacle mvp-tick</code> or wait for the scheduler.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

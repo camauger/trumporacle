@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{{ title }}</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>{{ title }}</h1>
+    <p>Version {{ version }} — predictions and calibration (MVP shell).</p>
+  </header>
+  <main>
+    <p><a href="/predictions">Latest predictions</a></p>
+    <p hx-get="/health" hx-trigger="load" hx-target="#health">Loading health…</p>
+    <p id="health"></p>
+  </main>
+</body>
+</html>

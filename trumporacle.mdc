@@ -1,0 +1,877 @@
+# Projet TRUMPORACLE
+## Détection et anticipation des escalades de valence dans les communications publiques de Donald Trump
+
+> Documentation projet — version 1.0
+> Statut : spécification gelée, prêt pour implémentation
+> Auteur : Christian Mauger
+> Date de spécification : mai 2026
+
+---
+
+## Table des matières
+
+1. [Vue d'ensemble](#1-vue-densemble)
+2. [Objectif et non-objectifs](#2-objectif-et-non-objectifs)
+3. [Définition opérationnelle de l'escalade](#3-définition-opérationnelle-de-lescalade)
+4. [Échelle de valence ordinale](#4-échelle-de-valence-ordinale)
+5. [Cibles prédictives](#5-cibles-prédictives)
+6. [Sources de données](#6-sources-de-données)
+7. [Architecture technique](#7-architecture-technique)
+8. [Modèle de données](#8-modèle-de-données)
+9. [Stratégie d'annotation](#9-stratégie-dannotation)
+10. [Stratégie d'évaluation](#10-stratégie-dévaluation)
+11. [Pipeline de modélisation](#11-pipeline-de-modélisation)
+12. [Re-training et drift](#12-re-training-et-drift)
+13. [Roadmap par phases](#13-roadmap-par-phases)
+14. [Considérations éthiques et opérationnelles](#14-considérations-éthiques-et-opérationnelles)
+15. [Risques et limitations](#15-risques-et-limitations)
+16. [Glossaire](#16-glossaire)
+17. [Décisions tracées](#17-décisions-tracées)
+
+---
+
+## 1. Vue d'ensemble
+
+### 1.1 Description courte
+
+Système d'analyse en quasi-temps réel de l'écosystème médiatique de droite et d'extrême droite américaine, conçu pour **détecter et anticiper les escalades de valence** dans les publications publiques de Donald Trump (principalement Truth Social).
+
+### 1.2 Hypothèse centrale
+
+L'écosystème médiatique pro-Trump (Fox News, Breitbart, podcasts MAGA, chaînes Telegram d'alliés) constitue un **substrat narratif** dont les variations d'intensité, de cible et de registre **précèdent et co-déterminent** les variations correspondantes dans les communications de Trump lui-même. Ce phénomène est documenté empiriquement depuis 2017 (boucle Fox → Trump documentée par Matthew Gertz, Media Matters).
+
+### 1.3 Proposition de valeur
+
+Le système produit, pour chaque fenêtre glissante de 2 heures, une **estimation calibrée et datable** de la probabilité que Trump franchisse différents seuils d'escalade rhétorique. Public cible :
+
+- Journalistes spécialisés (politique américaine, désinformation)
+- Chercheurs (sciences politiques, communication, études du discours)
+- Organisations de monitoring médiatique
+- Usage personnel d'analyse et de veille
+
+### 1.4 Ce que le système ne fait PAS
+
+- Ne prédit pas le **texte exact** d'un futur post
+- Ne prédit pas les **événements exogènes** (rulings, attentats, déclarations adverses)
+- N'effectue pas d'analyse de véracité (fact-checking)
+- Ne formule pas de jugement moral automatisé
+- N'agit pas en temps réel strict (latence acceptable : 5-15 minutes)
+
+---
+
+## 2. Objectif et non-objectifs
+
+### 2.1 Objectif primaire
+
+> Pour toute fenêtre temporelle de 2 heures dans le futur proche, estimer la **probabilité calibrée** qu'un post de Donald Trump dans cette fenêtre atteigne ou dépasse chacun des seuils de valence définis (k ∈ {3, 4, 5, 6}).
+
+### 2.2 Objectif secondaire
+
+Estimer la probabilité d'un **saut de valence** (différence entre la valence maximale prédite et la valence moyenne récente ≥ 2 niveaux) — métrique de l'escalade au sens dynamique.
+
+### 2.3 Objectif tertiaire
+
+Estimer la valeur attendue du niveau de valence maximal sur la fenêtre : `E[v_max(H, H+2h)]`.
+
+### 2.4 Non-objectifs explicites
+
+| Non-objectif | Raison |
+|---|---|
+| Génération de texte mimétique | Risque éthique disproportionné, valeur analytique faible |
+| Prédiction d'événements judiciaires/politiques | Hors périmètre de données |
+| Influence sur le débat public via diffusion automatique | Risque de boucle de rétroaction et d'effet Goodhart |
+| Détection de désinformation | Champ disciplinaire distinct, requiert ground truth différent |
+
+---
+
+## 3. Définition opérationnelle de l'escalade
+
+L'escalade est définie comme un phénomène **multi-dimensionnel** mesurable selon trois axes orthogonaux :
+
+### 3.1 Escalade d'intensité
+
+Augmentation de la charge émotionnelle, lexicale ou hyperbolique sans changement de cible ni de registre.
+*Marqueurs linguistiques : superlatifs, intensifieurs, répétitions, capitalisation, ponctuation expressive.*
+
+### 3.2 Escalade de cible
+
+Passage du général au nommé, ou de l'institutionnel au personnel.
+*Trajectoire typique : « les démocrates » → « la gauche radicale » → « Biden » → « le criminel Biden et sa famille corrompue ».*
+
+### 3.3 Escalade de registre
+
+Franchissement d'un seuil qualitatif sur l'échelle ordinale (voir section 4) — passage de la critique à la délégitimation, ou de la délégitimation à la suggestion de punition.
+
+### 3.4 Synthèse
+
+L'échelle ordinale 0-6 (section 4 ci-dessous) **encode principalement la dimension 3 (registre)**, avec des éléments de la dimension 1 (intensité) implicites dans les paliers hauts. La dimension 2 (cible) est traitée comme **annotation complémentaire** : pour chaque post, on annote optionnellement la cible nommée principale.
+
+Cette décision simplifie le MVP : une seule cible prédictive principale (le niveau de valence) avec un attribut d'enrichissement (la cible nommée).
+
+---
+
+## 4. Échelle de valence ordinale
+
+### 4.1 Définition des niveaux
+
+| Niveau | Étiquette | Description | Marqueurs linguistiques typiques |
+|---|---|---|---|
+| **0** | Neutre / factuel | Annonce, communication, déclaration sans charge négative significative | Annonces officielles, remerciements, communications protocolaires |
+| **1** | Critique politique normale | Désaccord substantiel exprimé dans un cadre démocratique acceptable | « Mauvaise politique », « erreur », « je ne suis pas d'accord » |
+| **2** | Raillerie / dérision | Moquerie, surnoms, dévalorisation rhétorique sans accusation grave | « Sleepy Joe », « Crooked Hillary », ridiculisation |
+| **3** | Délégitimation | Mise en cause de la légitimité, de la sincérité ou de l'intégrité | « Truqué », « corrompu », « illégal », « voleur » |
+| **4** | Déshumanisation / ennemi désigné | Présentation de l'adversaire comme ennemi structurel ou catégorie sous-humaine | « Vermine », « animaux », « ennemi du peuple », « parasites » |
+| **5** | Suggestion de punition / menace voilée | Évocation de conséquences punitives sans appel direct à la violence | « Ils paieront », « ce sera leur fin », « justice sera faite » |
+| **6** | Appel à l'action / menace explicite | Incitation directe ou très transparente à une action coercitive ou violente | Appels nommés à des arrestations, à des représailles, à des mobilisations physiques |
+
+### 4.2 Règles d'annotation
+
+1. **Niveau du post = niveau maximal atteint** dans le post (un post de niveau 5 contenant aussi du niveau 1 est annoté 5).
+2. **Le niveau évalue le contenu, pas l'émetteur** : la même phrase a la même valeur quel que soit l'auteur.
+3. **Le contexte d'énonciation est ignoré** : pas de prise en compte de la cible (sympathique ou antipathique au lecteur), pas de prise en compte du caractère vrai ou faux des accusations.
+4. **L'ironie est annotée au niveau apparent** : une menace formulée sur un ton sarcastique reste classée selon le contenu sémantique de la menace.
+5. **Sauter à un niveau supérieur en cas de doute entre deux paliers**, par exemple privilégier 5 sur 4 en cas de menace ambiguë. Cette règle reflète la valeur asymétrique des erreurs : sous-estimer une menace est plus coûteux que la sur-estimer.
+
+### 4.3 Attribut complémentaire : cible nommée
+
+Pour chaque post, on annote (lorsqu'applicable) :
+- **Cible principale** : entité nommée la plus saillante (personne, institution, groupe)
+- **Type de cible** : `person | institution | group | media | self_referential | none`
+- **Caractère explicite** : `named | euphemistic | implicit`
+
+### 4.4 Cas-limites (à figer dans la rubrique d'annotation)
+
+| Cas | Décision |
+|---|---|
+| Citation d'un tiers tenant des propos forts | Annoter au niveau du contenu cité |
+| Repost / partage sans commentaire | Annoter au niveau du contenu partagé |
+| Sarcasme transparent | Annoter au niveau du contenu littéral |
+| Déclarations religieuses / spirituelles | 0 sauf si elles contiennent une dimension politique d'attaque |
+| Posts mixant niveaux différents | Niveau maximal du post |
+| Contenu en majuscules sans menace lexicale | Pas de bonus automatique d'intensité |
+
+---
+
+## 5. Cibles prédictives
+
+### 5.1 Notation
+
+Soit `H` un instant de référence. Soit `W(H) = [H, H+2h]` la fenêtre de prédiction de 2 heures.
+Soit `P(W)` l'ensemble des posts de Trump publiés dans `W`.
+Soit `v(p)` la valence d'un post `p`.
+
+On définit :
+- `v_max(W) = max_{p ∈ P(W)} v(p)` (par convention, `v_max = -1` si `P(W)` est vide)
+- `v_recent(H) = moyenne(v(p) | p publié dans [H-24h, H])`
+
+### 5.2 Cibles prédictives
+
+| ID | Cible | Type | Description |
+|---|---|---|---|
+| **C1** | `E[v_max(W)]` | Régression ordinale | Valeur attendue du niveau de valence max |
+| **C2.k** pour k ∈ {3,4,5,6} | `P(v_max(W) ≥ k)` | Classification binaire | Probabilité de franchissement du seuil k |
+| **C3** | `P(v_max(W) ≥ v_recent(H) + 2)` | Classification binaire | Probabilité de saut de valence |
+| **C4** | `P(P(W) ≠ ∅)` | Classification binaire | Probabilité qu'au moins un post soit publié dans la fenêtre |
+
+### 5.3 Cible primaire pour évaluation
+
+**C2.4 et C2.5** — la probabilité calibrée de franchir les seuils de déshumanisation et de menace voilée. Ce sont les seuils où la valeur journalistique est maximale et où les fausses alertes sont les moins coûteuses.
+
+### 5.4 Cible secondaire pour évaluation
+
+**C3** — la détection de saut de valence. Cible plus difficile mais plus directement liée à la notion d'« escalade » que les seuils absolus.
+
+---
+
+## 6. Sources de données
+
+### 6.1 Périmètre figé pour le MVP
+
+| Source | Type | Volume estimé / jour | Méthode d'ingestion | Coût |
+|---|---|---|---|---|
+| **Truth Social (Trump)** | Texte court (≤ 500 tokens) | 5-50 posts | Scraping HTML / RSS communautaire | Gratuit (fragile) |
+| **Truth Social (alliés top-30)** | Texte court | 50-300 posts | Scraping HTML | Gratuit (fragile) |
+| **Telegram (chaînes MAGA)** | Texte + média | 200-2000 messages | API Telegram officielle | Gratuit |
+| **Fox News transcripts** | Texte long | ~24h de programmation | Closed captions + ASR | Gratuit (Whisper local) |
+| **Breitbart, Gateway Pundit, Daily Wire, Federalist** | Articles | 50-200 articles | RSS + scraping | Gratuit |
+| **Podcasts MAGA (War Room, Charlie Kirk, etc.)** | Audio long | 4-8h audio | Whisper local | Gratuit (compute) |
+
+### 6.2 Sources écartées du MVP
+
+| Source | Raison de l'exclusion |
+|---|---|
+| API X / Twitter | Coût prohibitif, valeur marginale faible si Truth Social est couvert |
+| Rumble | Volume modéré, signal redondant avec podcasts |
+| 4chan / Truth Social comments | Bruit élevé, valeur prédictive faible pour la cible Trump |
+| Sondages politiques | Hors périmètre prédictif (latence trop élevée) |
+
+### 6.3 Liste des chaînes Telegram à suivre (à figer)
+
+À déterminer manuellement avec critères :
+- Audience ≥ 10 000 abonnés
+- Activité ≥ 5 messages/jour
+- Alignement explicite avec l'écosystème MAGA
+- Diversité géographique et idéologique (nationaliste chrétien, identitarisme, complotisme, etc.)
+
+Cible : 30-50 chaînes pour la phase 1.
+
+### 6.4 Liste des podcasts à transcrire
+
+À figer en début de projet. Cible : 8-12 podcasts publiant ≥ 3 épisodes/semaine.
+
+### 6.5 Latence d'ingestion par source
+
+| Source | Latence cible | Latence acceptable max |
+|---|---|---|
+| Truth Social | < 2 min | 10 min |
+| Telegram | < 1 min | 5 min |
+| Fox transcripts | < 15 min | 60 min |
+| Articles RSS | < 5 min | 30 min |
+| Podcasts | < 4h après publication | 12h |
+
+---
+
+## 7. Architecture technique
+
+### 7.1 Stack technique (vanilla, conformément aux préférences)
+
+- **Langage principal** : Python 3.12+
+- **Base de données** : PostgreSQL 16 + extensions `pgvector`, `TimescaleDB`
+- **Ingestion** : `asyncio` + `httpx` + workers Python natifs
+- **NLP** : `spaCy`, `sentence-transformers`, appels LLM via API Anthropic
+- **ML classique** : `scikit-learn`, `xgboost`, `lifelines` (survival)
+- **Dashboard** : `FastAPI` + HTMX + Jinja2 (pas de framework JS lourd)
+- **Orchestration** : `APScheduler` pour le MVP, `Prefect` ou `Dagster` envisageable en v2
+- **Observabilité** : `loguru` + `Prometheus client` + Grafana
+- **Tests** : `pytest`, `hypothesis` (property-based)
+
+### 7.2 Vue logique
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                       INGESTION LAYER                         │
+│  Truth Social │ Telegram │ Fox CC │ RSS │ Podcasts (Whisper)  │
+└─────────────────────────────┬─────────────────────────────────┘
+                              │
+                              ▼
+┌───────────────────────────────────────────────────────────────┐
+│                    NORMALIZATION & STORAGE                    │
+│   raw_items → cleaned_items → embedded_items (pgvector)       │
+└─────────────────────────────┬─────────────────────────────────┘
+                              │
+                              ▼
+┌───────────────────────────────────────────────────────────────┐
+│                      ANNOTATION LAYER                         │
+│   LLM auto-annotation → human stratified validation           │
+│   gold_standard table maintenue séparément                    │
+└─────────────────────────────┬─────────────────────────────────┘
+                              │
+                              ▼
+┌───────────────────────────────────────────────────────────────┐
+│                    FEATURE ENGINEERING                        │
+│   Aggregations 1h/6h/24h │ Trend signals │ Topic distrib.     │
+│   Toutes features versionnées + horodatées                    │
+└─────────────────────────────┬─────────────────────────────────┘
+                              │
+                              ▼
+┌───────────────────────────────────────────────────────────────┐
+│                     PREDICTION ENGINE                         │
+│   Gradient boosting (C1, C2.k) + Survival (C4)                │
+│   Calibration layer (Platt / isotonic)                        │
+└─────────────────────────────┬─────────────────────────────────┘
+                              │
+                              ▼
+┌───────────────────────────────────────────────────────────────┐
+│                   EVAL & MONITORING LAYER                     │
+│   Predictions log │ Outcomes log │ Live metrics │ Drift       │
+└─────────────────────────────┬─────────────────────────────────┘
+                              │
+                              ▼
+┌───────────────────────────────────────────────────────────────┐
+│                       DASHBOARD                               │
+│   Live predictions │ Calibration │ Surprises │ Model history  │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### 7.3 Structure de dossiers proposée
+
+```
+escalade/
+├── ingestion/
+│   ├── truth_social/
+│   ├── telegram/
+│   ├── fox_captions/
+│   ├── rss/
+│   └── podcasts/
+├── storage/
+│   ├── migrations/
+│   └── models.py
+├── nlp/
+│   ├── annotation/
+│   ├── embedding/
+│   ├── entity_extraction/
+│   └── topic_modeling/
+├── features/
+│   ├── temporal/
+│   ├── lexical/
+│   ├── network/
+│   └── meta/
+├── prediction/
+│   ├── threshold_models/
+│   ├── jump_model/
+│   ├── timing_model/
+│   └── calibration/
+├── evaluation/
+│   ├── backtest/
+│   ├── live_metrics/
+│   └── slices/
+├── dashboard/
+│   ├── api/
+│   └── templates/
+├── orchestration/
+├── tests/
+├── notebooks/
+└── docs/
+```
+
+### 7.4 Principes architecturaux
+
+- **Idempotence** : tout pipeline doit pouvoir être ré-exécuté sans corrompre l'état.
+- **Traçabilité** : chaque prédiction doit être reconstruisible à partir de son `feature_hash` et de son `model_version`.
+- **Pas de leak temporel** : aucune feature calculée à partir d'informations postérieures à `H`.
+- **Découplage ingestion / annotation / prédiction** : trois pipelines indépendants reliés par la BD.
+- **Versioning fort** : taxonomie, modèles, features et schémas sont tous versionnés explicitement.
+
+---
+
+## 8. Modèle de données
+
+### 8.1 Tables principales (description logique)
+
+#### `sources`
+Référentiel des sources d'ingestion.
+- `id`, `name`, `kind` (`truth_social|telegram|tv|rss|podcast`), `url`, `is_active`, `metadata` (JSONB), `created_at`
+
+#### `raw_items`
+Items bruts capturés à l'ingestion.
+- `id`, `source_id`, `external_id` (unique par source), `published_at`, `captured_at`, `author`, `raw_content`, `media_urls`, `raw_metadata` (JSONB)
+- Index : `(source_id, published_at DESC)`, hypertable Timescale sur `published_at`
+
+#### `items`
+Items normalisés et nettoyés.
+- `id`, `raw_item_id`, `language`, `clean_text`, `token_count`, `embedding` (vector(1024)), `entities` (JSONB), `topic_id`
+- Lien 1:1 avec `raw_items`
+
+#### `trump_posts`
+Vue matérialisée filtrée sur les posts de Trump (pour requêtes fréquentes).
+
+#### `valence_annotations`
+Annotations de valence (par item).
+- `id`, `item_id`, `annotator` (`llm_v{n}|human_<id>`), `valence_level` (0-6), `target_type`, `target_name`, `confidence`, `rationale` (text), `annotated_at`
+- Un même item peut avoir plusieurs annotations (LLM + humain).
+
+#### `gold_standard`
+Sous-ensemble annoté humainement avec niveau de confiance maximal, **gelé** par version.
+- `id`, `item_id`, `valence_level`, `target_type`, `target_name`, `gold_version`, `frozen_at`
+
+#### `taxonomy_versions`
+Historique des taxonomies (valence, topics, cibles).
+- `id`, `name`, `version`, `definition` (JSONB), `effective_from`, `effective_to`
+
+#### `predictions`
+Toute prédiction émise par un modèle live.
+- `id`, `prediction_made_at`, `window_start`, `window_end`, `model_version`, `feature_hash`, `c1_value`, `c2_3_prob`, `c2_4_prob`, `c2_5_prob`, `c2_6_prob`, `c3_prob`, `c4_prob`, `payload` (JSONB pour debug)
+
+#### `outcomes`
+Réalisation observée pour chaque fenêtre passée.
+- `id`, `window_start`, `window_end`, `v_max`, `n_posts`, `targets_observed` (JSONB), `had_jump`, `computed_at`
+
+#### `models`
+Registre des modèles entraînés.
+- `id`, `version`, `task` (`c1|c2.k|c3|c4`), `algo`, `trained_at`, `train_period_start`, `train_period_end`, `feature_set_id`, `metrics` (JSONB), `artifact_path`, `is_active`
+
+#### `feature_sets`
+Définition versionnée des ensembles de features.
+- `id`, `name`, `version`, `definition` (JSONB), `effective_from`
+
+#### `events`
+Événements exogènes majeurs (annotés manuellement ou semi-auto) pour stratification.
+- `id`, `event_at`, `kind`, `description`, `severity`, `affected_topics` (JSONB)
+
+### 8.2 Tables auxiliaires
+
+- `entities` : référentiel d'entités nommées (politiciens, juges, journalistes…)
+- `entity_aliases` : variantes de nom pour normalisation
+- `model_metrics_live` : métriques calculées en continu
+- `drift_alerts` : journal des alertes de drift
+
+### 8.3 Principes de schéma
+
+1. **Append-only** sur `raw_items`, `predictions`, `outcomes`, `valence_annotations`. Pas d'`UPDATE` destructif.
+2. **Foreign keys strictes** entre `raw_items` ↔ `items` ↔ `valence_annotations`.
+3. **Versioning explicite** via `taxonomy_versions`, `models`, `feature_sets`. Toute prédiction est traçable au triplet (taxonomie, feature_set, model_version).
+4. **Hypertables Timescale** sur les tables volumineuses indexées temporellement.
+5. **JSONB pour la flexibilité**, mais avec schémas Pydantic en couche applicative.
+
+---
+
+## 9. Stratégie d'annotation
+
+### 9.1 Principe général
+
+Annotation **automatique par LLM** comme couche de base, **validation humaine stratifiée** pour calibrer et corriger, **gold standard humain pur** pour l'évaluation finale.
+
+### 9.2 Pipeline d'annotation
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│ Items à annoter │────▶│ LLM-labeler v_n  │────▶│ valence_annot.   │
+└─────────────────┘     └──────────────────┘     └──────────────────┘
+                                                          │
+                                                          ▼
+                              ┌──────────────────────────────────────┐
+                              │ Échantillonnage stratifié            │
+                              │ (uniforme par niveau, oversampling   │
+                              │ niveaux 4-6, oversampling cas-limite)│
+                              └──────────────────┬───────────────────┘
+                                                 ▼
+                              ┌──────────────────────────────────────┐
+                              │ Annotation humaine (Christian)       │
+                              └──────────────────┬───────────────────┘
+                                                 ▼
+                              ┌──────────────────────────────────────┐
+                              │ Calcul accord LLM-humain             │
+                              │ (Cohen's κ par niveau, MAE ordinal)  │
+                              └──────────────────┬───────────────────┘
+                                                 ▼
+                              ┌──────────────────────────────────────┐
+                              │ Si κ ≥ 0.7 global et ≥ 0.5 niveaux 4-6│
+                              │ ⇒ LLM-labeler validé pour training    │
+                              │ Sinon ⇒ raffiner rubrique LLM         │
+                              └──────────────────────────────────────┘
+```
+
+### 9.3 Volumes cibles
+
+| Cohorte | Volume | Annotateur | Usage |
+|---|---|---|---|
+| Corpus historique Trump | 100% (estim. 10-20k posts) | LLM | Training |
+| Corpus écosystème média | 100% (estim. 200k+ items) | LLM | Features + baselines |
+| Validation stratifiée | 500-1000 items | Christian | Validation LLM-labeler |
+| **Gold standard test** | **300-500 items** | **Christian seul** | **Évaluation finale, JAMAIS vu en training** |
+
+### 9.4 Rubrique LLM-labeler
+
+Le prompt de labeling doit inclure :
+1. La définition complète des 7 niveaux (section 4.1)
+2. Les règles d'annotation (section 4.2)
+3. Les cas-limites résolus (section 4.4)
+4. **5-10 exemples par niveau** (few-shot avec exemples humains validés)
+5. Format de sortie structuré (JSON avec `level`, `target`, `rationale`, `confidence`)
+6. Instruction explicite : *« En cas de doute entre deux niveaux, choisir le niveau supérieur »*
+
+### 9.5 Stratification de la validation humaine
+
+L'échantillon de 500-1000 items pour validation humaine est **stratifié uniformément** par niveau (≈100 items/niveau pour les niveaux 0-3, ≈150 pour les niveaux 4-6 sous-représentés). Plus :
+- 100 items où le LLM a indiqué une `confidence` < 0.6 (cas difficiles)
+- 100 items proches des frontières inter-niveaux (selon distribution des logits si accessibles)
+
+### 9.6 Métriques d'accord
+
+| Métrique | Cible minimale | Action si en-dessous |
+|---|---|---|
+| Cohen's κ global | 0.70 | Raffiner rubrique, ré-annoter |
+| Cohen's κ niveaux 4-6 | 0.50 | Ajouter exemples, clarifier paliers |
+| MAE ordinal | < 0.6 | Réviser exemples des paliers extrêmes |
+| Biais signé (LLM - humain) | \|biais\| < 0.3 | Appliquer correction post-hoc |
+
+### 9.7 Annotation des sources externes
+
+Décision figée : **les sources externes (Fox, Breitbart, Telegram, podcasts) sont annotées sur la même échelle 0-6**.
+
+Conséquences :
+- Permet la baseline « persistance médiatique » de la section 10
+- Permet des features riches d'agrégation (valence moyenne / max de l'écosystème par fenêtre)
+- Coût supplémentaire : ~5x le volume Trump à annoter par LLM
+
+Ajustements sémantiques pour sources externes :
+- Le niveau évalue toujours le contenu, pas l'auteur
+- Pour les segments TV / podcasts : annotation au niveau du **segment** (≈ 2-5 min) plutôt que de la phrase
+- Pour les articles longs : annotation au niveau du paragraphe principal **et** au niveau global
+
+### 9.8 Versioning des annotations
+
+Chaque batch d'annotation LLM porte un `llm_labeler_version` (rubrique + modèle + paramètres). Toute mise à jour de la rubrique incrémente cette version et déclenche, *si nécessaire*, une ré-annotation du corpus.
+
+Le `gold_standard` est lui aussi versionné. Une régression de performance sur une nouvelle version du gold est un signal **plus fort** qu'une régression sur les annotations LLM.
+
+---
+
+## 10. Stratégie d'évaluation
+
+### 10.1 Découpage temporel
+
+| Split | Période (exemple) | Usage |
+|---|---|---|
+| Train | t-24 mois → t-6 mois | Apprentissage |
+| Validation | t-6 mois → t-2 mois | Hyperparamètres, calibration |
+| Test (gelé) | t-2 mois → t-0 | Évaluation finale, **utilisé une seule fois** |
+| Live | t-0 → futur | Évaluation continue post-déploiement |
+
+**Aucun split aléatoire**. Tous les splits sont contigus temporellement.
+
+### 10.2 Hygiène anti-leak
+
+Pour chaque feature :
+1. Documenter explicitement la **fenêtre de calcul** (ex : agrégation des dernières 6h avant `H`)
+2. Documenter les **sources** utilisées et leur disponibilité au moment `H`
+3. **Reproduire** la feature à `H` à partir de l'état de la BD à `H` (test d'idempotence temporelle)
+
+Pièges spécifiquement à éviter :
+- Vocabulaire d'entités extrait de l'ensemble du corpus
+- Embeddings calculés avec un modèle entraîné sur des données futures
+- Statistiques de fréquence calculées globalement
+- Imputation par moyennes globales (utiliser moyennes glissantes seulement)
+
+### 10.3 Baselines (par ordre de difficulté croissante)
+
+| Baseline | Description | Utilité |
+|---|---|---|
+| **B1 — Constante** | Distribution marginale 90j | Sanity check, plancher |
+| **B2 — Persistance Trump** | `v_pred(W) = v_recent(H, 24h)` | Capture l'auto-corrélation interne |
+| **B3 — AR(p) sur valence** | Auto-régressif simple | Capture la dynamique courte |
+| **B4 — Persistance médiatique** | Moyenne pondérée valence écosystème 6h | **La vraie barre à franchir** |
+
+**Règle d'or** : tout gain de performance est rapporté contre B4. Si le modèle ML ne bat pas B4 de façon significative, le modèle ML n'apporte rien — et c'est une découverte en soi.
+
+### 10.4 Métriques principales
+
+| Cible | Métrique principale | Métrique secondaire | Métrique de calibration |
+|---|---|---|---|
+| C1 (E[v_max]) | MAE ordinal | Spearman ρ | — |
+| C2.k (seuils) | **AUC-PR** | F1 @ seuil optimal | ECE par seuil |
+| C3 (saut) | **F1 + lead time moyen** | Recall@precision=80% | ECE |
+| C4 (au moins 1 post) | Brier score | AUC-ROC | ECE |
+
+**Pourquoi AUC-PR plutôt que AUC-ROC** : les niveaux 5-6 sont rares (estim. 2-5% des fenêtres). L'AUC-ROC sera artificiellement gonflée par les vrais négatifs nombreux. L'AUC-PR est honnête sur les classes déséquilibrées.
+
+**Lead time moyen** : pour C3, mesurer non seulement la détection mais le temps d'avance moyen. Une prédiction 90 minutes avant l'événement vaut bien plus qu'une prédiction 5 minutes avant.
+
+### 10.5 Calibration
+
+Mesurée via :
+1. **Expected Calibration Error (ECE)** par tranche de probabilité (10 bins)
+2. **Diagrammes de fiabilité** par cible
+3. **Calibration par strate** (régime normal vs événementiel, voir 10.6)
+
+Si ECE > 0.1 sur la validation : appliquer **Platt scaling** (logistique) ou **régression isotonique** (non-paramétrique). Décision figée pour le MVP : **régression isotonique**, plus flexible.
+
+### 10.6 Stratification de l'évaluation
+
+L'évaluation est calculée **séparément** sur :
+
+| Strate | Définition | Volume estimé | Attendu |
+|---|---|---|---|
+| **Régime normal** | Pas d'événement exogène majeur dans les 6h précédentes | ~80% | Performance principale |
+| **Régime événementiel** | Événement exogène majeur dans les 6h précédentes | ~20% | Réactivité plutôt qu'anticipation |
+| **Créneaux Fox & Friends** | 6h-9h ET, jours de semaine | ~10% | Performance attendue plus forte |
+| **Cycles judiciaires** | Fenêtre de ±48h autour d'une décision majeure | Variable | Surveillance spécifique |
+| **Topics evergreen** | Immigration, médias | ~50% | Performance facile |
+| **Topics émergents** | Premier signal du topic dans les 30 derniers jours | ~10% | Vrai test ML |
+
+Un modèle qui est bon en moyenne mais nul sur les strates importantes est inutile.
+
+### 10.7 Logging des prédictions live
+
+Chaque prédiction produite après déploiement est loggée avec :
+- `prediction_made_at`
+- `window_start`, `window_end`
+- `feature_hash` (SHA256 du vecteur de features)
+- `feature_set_version`
+- `model_version`
+- Distribution prédite complète
+- Identifiant du process / instance
+
+Quand `window_end` est atteint, un job calcule l'`outcome` et crée une ligne `prediction_score`.
+
+### 10.8 Tests qualitatifs hebdomadaires
+
+Au-delà des métriques :
+1. **Top 20 erreurs confiantes** : prédictions de probabilité ≥ 0.8 où l'outcome a infirmé. Examiner manuellement.
+2. **Top 20 surprises** : outcomes où la valence observée a dépassé la prédiction d'au moins 2 niveaux.
+3. **Vrais positifs intéressants vs banals** : sur les prédictions d'escalade correctes, distinguer les évidentes des non-triviales.
+
+### 10.9 Critères de mise en production d'un nouveau modèle
+
+Un nouveau modèle ne remplace l'actuel que si :
+1. Performance ≥ actuel sur **au moins 3 métriques sur 4** (toutes cibles confondues)
+2. **Aucune métrique** ne régresse de plus de 5 % relatif
+3. ECE ≤ 0.10 sur toutes les cibles
+4. A battu la baseline B4 de façon statistiquement significative (test de DeLong pour AUC, bootstrap pour les autres)
+5. Performance sur le régime événementiel non-régressive
+
+---
+
+## 11. Pipeline de modélisation
+
+### 11.1 Familles de features
+
+| Famille | Description | Exemples | Fenêtre typique |
+|---|---|---|---|
+| **Temporelles directes** | Variables liées à `H` | heure de la journée, jour de la semaine, jours depuis dernier post | Instant |
+| **Volume** | Compteurs d'activité | nb posts Trump 6h, nb articles Breitbart 6h, nb messages Telegram 6h | 1h, 6h, 24h |
+| **Valence agrégée** | Statistiques sur valences passées | moyenne, max, écart-type des valences Trump 6h, écosystème 6h | 1h, 6h, 24h |
+| **Trend** | Dérivées des séries de valence | pente régression linéaire valence 6h, accélération | 6h vs 24h |
+| **Lexicale** | Présence de marqueurs | densité d'intensifieurs, ratio majuscules, ponctuation expressive | Instant + 6h |
+| **Entités** | Présence et fréquence d'entités nommées | Top-20 entités cibles avec compteurs | 6h, 24h |
+| **Topics** | Distribution des topics actifs | proba topic-K dans l'écosystème 6h | 6h |
+| **Réseau / co-occurrence** | Liens entre entités | force du couplage Trump-Telegram sur entité X | 24h |
+| **Méta** | Signaux structurels | présence d'événement exogène taggé, jour de débat, etc. | Instant |
+
+### 11.2 Algorithmes par cible
+
+| Cible | Algorithme principal | Algorithme alternatif | Justification |
+|---|---|---|---|
+| C1 (régression ordinale) | `XGBoost` avec objectif multi:softprob + post-traitement ordinal | `mord` (régression ordinale) | XGBoost gère bien tabulaire + non-linéarités |
+| C2.k (binaires) | `XGBoost` avec early stopping | `LightGBM` | Standard sur tabulaire, calibrable |
+| C3 (saut) | `XGBoost` avec class_weight | Réseau de neurones tabulaire (TabNet) | Idem |
+| C4 (présence post) | Modèle de Cox / hazard variable | `XGBoost` binaire | Survival pour intégrer la latence depuis le dernier post |
+
+### 11.3 Couche de calibration
+
+Après le modèle de base : **régression isotonique** sur la validation, par cible. Stockée comme étape distincte du pipeline pour pouvoir être ré-entraînée seule.
+
+### 11.4 Fréquence d'inférence
+
+- **Inférence batch** : toutes les **15 minutes**, recalcul des prédictions pour la fenêtre suivante.
+- **Inférence opportuniste** : déclenchée immédiatement après un événement majeur détecté (post de Trump, breaking news taggée).
+
+### 11.5 Dérive et seuils d'alerte
+
+Métriques surveillées en continu :
+- ECE rolling 7j et 30j
+- AUC-PR rolling 7j et 30j sur C2.4 et C2.5
+- Brier rolling 7j sur C4
+
+Alerte si :
+- ECE 7j > 0.15 deux jours consécutifs
+- AUC-PR 7j en baisse de 15 % vs baseline 30j
+- Brier 7j > Brier 30j × 1.25
+
+---
+
+## 12. Re-training et drift
+
+### 12.1 Cadence de re-training
+
+**Re-training mensuel** par défaut (figé en réponse).
+**Re-training opportuniste** déclenché par :
+- Alerte de drift (voir 11.5)
+- Événement structurant majeur (élection, changement de plateforme, ban/unban)
+- Mise à jour de taxonomie
+
+### 12.2 Procédure de re-training
+
+1. Geler la nouvelle date de fin du train (`t_train_end`).
+2. Recalculer les annotations LLM si la version du LLM-labeler a changé.
+3. Recalculer les features pour le nouveau train.
+4. Entraîner les modèles candidats (C1, C2.k, C3, C4).
+5. Évaluer sur le nouveau test (la fenêtre de test glisse de 1 mois).
+6. Comparer aux modèles actuels selon les critères de la section 10.9.
+7. Si validé : promotion en `is_active = TRUE`, ancien modèle archivé.
+8. Sinon : analyse des causes, itération.
+
+### 12.3 Détection de drift de distribution
+
+Trois types de drift surveillés :
+
+| Type | Méthode | Action |
+|---|---|---|
+| **Concept drift** (relation features → cible change) | Performance live qui chute | Re-training |
+| **Covariate drift** (distribution des features change) | KL-div / PSI sur les features clés vs train | Investigation, re-training si fort |
+| **Label drift** (distribution des valences change) | Distribution mensuelle des valences vs historique | Vérifier rubrique LLM, re-annoter si nécessaire |
+
+### 12.4 Versioning bout-en-bout
+
+| Composant | Versioning | Rétention |
+|---|---|---|
+| Taxonomie de valence | Sémantique (v1.0, v1.1) | Toutes versions |
+| Rubrique LLM-labeler | Sémantique + hash du prompt | Toutes versions |
+| Feature set | Incrémental (fs_001, fs_002) | Toutes versions |
+| Modèle | Sémantique + timestamp + git SHA | Toutes versions, au moins 12 mois actifs |
+| Gold standard | Sémantique (gold_v1, gold_v2) | Toutes versions |
+
+---
+
+## 13. Roadmap par phases
+
+### Phase 0 — Fondations (semaine 1-2)
+**Livrable :** spec gelée + environnement de dev opérationnel.
+
+- [ ] Spec figée (ce document)
+- [ ] Repo Git initialisé avec structure de dossiers
+- [ ] PostgreSQL + extensions installé localement
+- [ ] Schéma BD v1 déployé
+- [ ] Pipeline CI/CD minimal (lint, tests, type-check)
+
+### Phase 1 — Corpus historique Trump (semaine 3-4)
+**Livrable :** corpus complet des posts Trump + premières annotations LLM.
+
+- [ ] Scraper Truth Social fonctionnel (avec gestion robuste des rate limits et erreurs)
+- [ ] Ingestion d'au moins 24 mois d'historique
+- [ ] Pipeline d'annotation LLM avec rubrique v1
+- [ ] Annotation de 100% du corpus
+- [ ] 500 items annotés humainement (validation stratifiée)
+- [ ] Calcul Cohen's κ → décision sur la rubrique
+
+### Phase 2 — Boucle Fox & Friends (semaine 5-7)
+**Livrable :** baseline B4 implémentée et premier modèle battant B4.
+
+- [ ] Ingestion transcripts Fox (closed captions + Whisper de secours)
+- [ ] Annotation valence des transcripts
+- [ ] Calcul de la baseline B4 (persistance médiatique)
+- [ ] Premier modèle XGBoost sur C2.4 et C2.5
+- [ ] Évaluation backtest avec hygiène temporelle stricte
+- [ ] Décision Go/No-Go sur la viabilité
+
+### Phase 3 — Élargissement écosystème (semaine 8-11)
+**Livrable :** ingestion complète + modèles principaux entraînés.
+
+- [ ] Ingestion Telegram (30-50 chaînes)
+- [ ] Ingestion RSS (Breitbart, Gateway Pundit, Daily Wire, Federalist)
+- [ ] Ingestion podcasts (top 10 MAGA) avec Whisper local
+- [ ] Annotation valence de l'ensemble
+- [ ] Re-training avec features enrichies
+- [ ] Mesure du gain marginal par source
+
+### Phase 4 — Mise en production (semaine 12-14)
+**Livrable :** système live avec dashboard.
+
+- [ ] Pipeline d'inférence toutes les 15 minutes
+- [ ] Logging des prédictions et calcul d'outcomes
+- [ ] Dashboard FastAPI/HTMX
+- [ ] Alerting drift
+- [ ] Documentation utilisateur
+
+### Phase 5 — Itération et raffinement (continu)
+- [ ] Premier re-training mensuel
+- [ ] Examen hebdomadaire des erreurs et surprises
+- [ ] Évaluation des extensions (espace vectoriel multi-D, autres cibles)
+- [ ] Publication possible (article méthodologique, code open source partiel)
+
+---
+
+## 14. Considérations éthiques et opérationnelles
+
+### 14.1 Cadre éthique
+
+Le projet s'inscrit dans la tradition du **monitoring médiatique académique et journalistique** (Media Matters, Berkman Klein Center, Oxford Internet Institute). Il est **descriptif et prédictif**, non normatif ni prescriptif.
+
+Principes :
+1. **Transparence méthodologique** : tout l'appareil prédictif est documenté.
+2. **Calibration plutôt qu'alarmisme** : un modèle bien calibré n'« annonce » rien — il assigne des probabilités falsifiables.
+3. **Pas d'usage offensif** : le système ne sert pas à harceler, doxxer ou cibler des personnes.
+4. **Respect des plateformes** : les ingestions respectent les TOS dans la mesure du possible et préfèrent les méthodes publiques (RSS, API officielles, scraping respectueux).
+
+### 14.2 Risques de dual-use
+
+| Risque | Mitigation |
+|---|---|
+| Utilisation par des acteurs hostiles à Trump pour amplifier des contre-narratifs | Diffusion contrôlée, accent méthodologique |
+| Utilisation par l'écosystème Trump pour anticiper le monitoring | Faible utilité car les patterns détectés sont déjà publics |
+| Effet Goodhart si le système devient célèbre | Surveillance d'un drift comportemental ; documentation de cet effet |
+| Reproduction non-souhaitée vers d'autres figures politiques | Choix conscient : se limiter à un sujet où la valeur démocratique est haute |
+
+### 14.3 Données personnelles
+
+Le projet traite presque exclusivement des **communications publiques de personnages publics**. Pas de données privées, pas d'utilisateurs anonymes ciblés. Les commentaires Truth Social, même publics, sont **exclus** car ils relèvent de citoyens ordinaires.
+
+### 14.4 Hébergement et accessibilité
+
+- **Local** pendant le développement
+- **Auto-hébergement** envisagé pour la production (VPS chez un hébergeur québécois ou européen, hors juridiction américaine)
+- **Pas de cloud propriétaire américain** pour le stockage des données brutes
+
+### 14.5 Documentation publique
+
+À la mise en production, prévoir :
+- Une **datasheet** au sens de Gebru et al. (2018) décrivant les données
+- Une **model card** au sens de Mitchell et al. (2019) pour chaque modèle
+- Un **journal de bord** des décisions méthodologiques
+
+---
+
+## 15. Risques et limitations
+
+### 15.1 Risques techniques
+
+| Risque | Probabilité | Impact | Mitigation |
+|---|---|---|---|
+| Truth Social bloque le scraping | Élevée | Élevé | Plusieurs méthodes en parallèle, dégradation gracieuse, communauté de scrapers |
+| LLM-labeler systématiquement biaisé sur niveaux 4-6 | Élevée | Moyen | Validation humaine, correction post-hoc, ajout d'exemples |
+| Volume d'annotation humaine sous-estimé | Moyenne | Moyen | Annotation par batchs, priorisation stratifiée |
+| Coût compute Whisper élevé | Moyenne | Faible | Whisper local, possibilité de réduire le périmètre podcasts |
+| Drift rapide de l'écosystème (nouveaux mèmes, nouveaux ennemis) | Élevée | Moyen | Re-training mensuel, surveillance lexicale |
+
+### 15.2 Risques méthodologiques
+
+| Risque | Mitigation |
+|---|---|
+| Modèle qui apprend le timing plus que la sémantique | Test ablatif sans features temporelles |
+| Sur-apprentissage à des événements spécifiques | Validation sur multiples périodes contiguës |
+| Baseline B4 jamais battue | Acceptable comme résultat scientifique : démonstration que l'écosystème médiatique 6h précédent suffit |
+| Trump change de plateforme principale | Le système est généralisable — mais nécessite re-ingestion |
+
+### 15.3 Limitations connues à documenter
+
+1. **Pas de prédiction d'événements exogènes**. Le système est conditionnel.
+2. **Latence inhérente**. Inférence toutes les 15 min ⇒ pas un système temps réel strict.
+3. **Biais de représentativité de l'écosystème** : les sources choisies ne couvrent pas tout.
+4. **Limite supérieure de performance** : il existe une variance irréductible (aléa du timing exact des posts).
+5. **Sensibilité linguistique** : la rubrique est en anglais ; les nuances culturelles d'autres langues sont ignorées.
+
+---
+
+## 16. Glossaire
+
+| Terme | Définition |
+|---|---|
+| **Valence** | Niveau d'intensité rhétorique négative d'un post, sur l'échelle ordinale 0-6 |
+| **Escalade** | Augmentation de la valence selon une ou plusieurs des trois dimensions (intensité, cible, registre) |
+| **Saut** | Augmentation de ≥ 2 niveaux par rapport à la moyenne récente |
+| **Fenêtre** | Période de 2h pour laquelle une prédiction est faite |
+| **Régime normal / événementiel** | Stratification du test selon présence d'événements exogènes |
+| **Gold standard** | Sous-ensemble annoté humainement, réservé à l'évaluation finale |
+| **LLM-labeler** | Modèle de langage utilisé pour annoter automatiquement le corpus |
+| **B4** | Baseline « persistance médiatique » — moyenne pondérée de la valence de l'écosystème sur 6h |
+| **C1, C2.k, C3, C4** | Cibles prédictives définies en section 5 |
+| **ECE** | Expected Calibration Error |
+| **AUC-PR** | Area Under the Precision-Recall curve |
+| **Lead time** | Temps d'avance d'une prédiction correcte par rapport à l'événement |
+| **Drift** | Changement de distribution invalidant un modèle |
+| **Boucle Fox → Trump** | Phénomène empirique de réaction rapide de Trump aux segments Fox News |
+
+---
+
+## 17. Décisions tracées
+
+Décisions prises et figées au cours de la spécification. Toute remise en question doit produire une nouvelle version de la doc.
+
+| # | Décision | Justification | Date |
+|---|---|---|---|
+| D1 | Cible primaire = détection d'escalade, non prédiction de texte | Tractabilité ML + valeur analytique | mai 2026 |
+| D2 | Fenêtre prédictive = 2h glissantes | Compromis entre granularité et bruit | mai 2026 |
+| D3 | Échelle de valence ordinale 0-6 | Interprétable, standard, suffisante pour MVP | mai 2026 |
+| D4 | Annotation par LLM + validation humaine stratifiée | Coût/qualité optimal | mai 2026 |
+| D5 | Annotation des sources externes sur la même échelle | Permet baseline B4 et features riches | mai 2026 |
+| D6 | Sources : Truth Social + Telegram + écosystème média web (pas de Twitter API) | Coût + couverture suffisante | mai 2026 |
+| D7 | Re-training mensuel par défaut + opportuniste sur drift | Cadence raisonnable pour le rythme du domaine | mai 2026 |
+| D8 | Stack vanilla Python (pas de framework lourd) | Préférence Christian + maintenabilité | mai 2026 |
+| D9 | Cible primaire d'évaluation = C2.4 et C2.5 | Pertinence journalistique maximale | mai 2026 |
+| D10 | Calibration via régression isotonique | Plus flexible que Platt scaling | mai 2026 |
+| D11 | Hold-out test de 2 mois, gelé, utilisé une seule fois | Hygiène stricte anti-overfitting | mai 2026 |
+| D12 | Auto-hébergement hors juridiction américaine pour la prod | Cohérent avec sensibilité du sujet | mai 2026 |
+
+---
+
+*Fin du document. Version 1.0 — prête pour implémentation Phase 0.*

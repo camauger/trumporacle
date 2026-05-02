@@ -1,0 +1,14 @@
+[Unit]
+Description=TRUMPORACLE FastAPI + scheduler
+After=network-online.target
+
+[Service]
+Type=simple
+User=trumporacle
+WorkingDirectory=/opt/trumporacle
+EnvironmentFile=/opt/trumporacle/.env
+ExecStart=/opt/trumporacle/.venv/bin/uvicorn trumporacle.dashboard.api.app:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

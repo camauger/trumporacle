@@ -1,0 +1,107 @@
+# TRUMPORACLE — Python package and dependency manifest
+[project]
+name = "trumporacle"
+version = "0.1.0"
+description = "Detection and anticipation of rhetorical valence escalation (TRUMPORACLE spec)."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "alembic>=1.14.0",
+    "anthropic>=0.45.0",
+    "asyncpg>=0.30.0",
+    "diskcache>=5.6.3",
+    "fastapi>=0.115.0",
+    "feedparser>=6.0.11",
+    "httpx>=0.28.0",
+    "instructor>=1.7.0",
+    "lifelines>=0.30.0",
+    "loguru>=0.7.3",
+    "mlflow>=2.19.0",
+    "numpy>=2.0.0",
+    "prometheus-client>=0.21.0",
+    "pydantic>=2.10.0",
+    "psycopg[binary]>=3.2.0",
+    "pydantic-settings>=2.7.0",
+    "python-multipart>=0.0.20",
+    "apscheduler>=3.10.4",
+    "scikit-learn>=1.6.0",
+    "selectolax>=0.3.21",
+    "sentence-transformers>=3.3.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "tenacity>=9.0.0",
+    "uvicorn[standard]>=0.34.0",
+    "xgboost>=2.1.0",
+    "jinja2>=3.1.4",
+    "telethon>=1.38.0",
+    "yt-dlp>=2025.1.0",
+    "faster-whisper>=1.1.0",
+    "spacy>=3.8.0",
+]
+
+[project.scripts]
+trumporacle = "trumporacle.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "hypothesis>=6.122.0",
+    "mypy>=1.14.0",
+    "pre-commit>=4.0.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "testcontainers[postgres]>=4.9.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+mypy_path = ["src"]
+packages = ["trumporacle.prediction", "trumporacle.evaluation", "trumporacle.features"]
+disable_error_code = ["import-untyped"]
+
+[[tool.mypy.overrides]]
+module = [
+    "trumporacle.ingestion.*",
+    "trumporacle.dashboard.*",
+    "trumporacle.orchestration.*",
+    "trumporacle.nlp.*",
+    "telethon.*",
+    "feedparser.*",
+    "instructor.*",
+    "mlflow.*",
+    "xgboost.*",
+    "faster_whisper.*",
+    "spacy.*",
+    "sentence_transformers.*",
+    "diskcache.*",
+    "apscheduler.*",
+    "prometheus_client.*",
+]
+ignore_missing_imports = true
+strict = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/trumporacle"]
+branch = true

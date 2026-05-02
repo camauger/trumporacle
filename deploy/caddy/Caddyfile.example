@@ -1,0 +1,5 @@
+# Example Caddy reverse proxy for TRUMPORACLE (spec stack.md).
+localhost {
+	encode gzip
+	reverse_proxy 127.0.0.1:8000
+}
