@@ -32,9 +32,9 @@ async def fetch_mvp_features(session: AsyncSession, h: datetime) -> MvpFeatures:
         text(
             """
             WITH ann AS (
-                SELECT item_id, MAX(valence_level) AS v
+                SELECT DISTINCT ON (item_id) item_id, valence_level AS v
                 FROM valence_annotations
-                GROUP BY item_id
+                ORDER BY item_id, annotated_at DESC, llm_labeler_version DESC
             )
             SELECT COALESCE(AVG(ann.v)::double precision, 0.0) AS mu,
                    COUNT(*)::int AS n
@@ -56,9 +56,9 @@ async def fetch_mvp_features(session: AsyncSession, h: datetime) -> MvpFeatures:
         text(
             """
             WITH ann AS (
-                SELECT item_id, MAX(valence_level) AS v
+                SELECT DISTINCT ON (item_id) item_id, valence_level AS v
                 FROM valence_annotations
-                GROUP BY item_id
+                ORDER BY item_id, annotated_at DESC, llm_labeler_version DESC
             )
             SELECT COALESCE(AVG(ann.v)::double precision, 0.0) AS mu,
                    COUNT(*)::int AS n

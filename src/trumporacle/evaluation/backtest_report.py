@@ -88,9 +88,9 @@ async def fetch_windows_with_outcomes(
         text(
             """
             WITH ann AS (
-                SELECT item_id, MAX(valence_level) AS v
+                SELECT DISTINCT ON (item_id) item_id, valence_level AS v
                 FROM valence_annotations
-                GROUP BY item_id
+                ORDER BY item_id, annotated_at DESC, llm_labeler_version DESC
             )
             SELECT
                 o.window_start AS window_start,

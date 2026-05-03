@@ -33,9 +33,18 @@ Découpage **technique (gel MVP)** vs **données & validation spec §9–10** (t
 **Flux RSS recommandé (simple)**  
 - **Trump’s Truth** ([Defending Democracy Together](https://defendingdemocracytogether.org/)) : `https://www.trumpstruth.org/feed` (XML). Fenêtre optionnelle : `?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD` (ex. mois calendaire pour backfill). Respecter leurs conditions d’usage ; ce n’est pas un flux officiel Truth Social.
 
+**Audit pilote rubrique LLM (mai 2026, version active = `llm_v1.2`)**  
+- Sample 40 items zone décisive (LLM 2-6) annoté manuellement via `scripts/audit_ui.html` (UI vanilla JS + localStorage + export JSONL).
+- Itérations rubrique : `v1.0` (κ=0.198, MAE=0.50, biais=−0.50) → `v1.1` (κ=0.258, MAE=**0.76**, 5 items niveau 3 régressent) → **`v1.2`** (κ=**0.317**, MAE=**0.50**, biais=**−0.34**) ; v1.2 introduit une procédure de décision top-down + élargit le palier 3 aux attaques de crédibilité non-littérales.
+- Refactor `MAX(valence_level)` → `DISTINCT ON (item_id) ORDER BY annotated_at DESC, llm_labeler_version DESC` dans 5 requêtes (`mvp_features.py`, `outcomes_live.py`, `backtest_report.py`) pour utiliser **la dernière annotation par item** ; les versions précédentes restent en DB (append-only spec §8.3) mais ne polluent plus les features ni les outcomes.
+- **Recompute outcomes** (DELETE 884 + re-materialize) avec les nouvelles requêtes : v_max=4 passe de 0 à 41 fenêtres, niveau 2 fond de 57 à 8 (raillerie reclassée en 1 ou 3). Décision tracée : DELETE+recompute des outcomes calculés est légitime hors append-only car ils sont **dérivés** des annotations.
+- Modules : `scripts/audit_ui.html`, `scripts/audit_rubric.py`, `scripts/reannotate.py` (idempotent par version, ré-annoter à chaque bump `RUBRIC_VERSION`).
+- **Effet sur le rapport backtest** : MVP-baseline AUC-PR C2.3 0.16→**0.25**, C2.4 0.07→**0.18**, C3 0.06→**0.27** ; B3 (autocorrélation) reste à 0.77-0.79 (artefact recouvrement 87.5% des fenêtres glissantes). MVP bat B1/B2/B4 mais perd nettement contre B3.
+
 **Reste pour alignement complet spec Phase 1** (données + temps humain, plus de code bloquant)  
 - Lancer `backfill-truth` sur la fenêtre cible (~24 mois) puis annoter le corpus historique avec `ingest-truth` (clé Anthropic requise) ; coût/quotas LLM à surveiller.
 - Annoter humainement les ~**500–950** items du JSONL produit par `sample-validation`, ré-importer dans `valence_annotations` (annotateur ≠ `llm*`), puis lancer `validation-report` pour la décision Go/No-Go formelle sur la rubrique LLM.
+- **Itérer rubrique v1.2** : garder les markers v1.1 niveau 4-5 + ajouter garde « accusations de corruption/intégrité sans markers déshumanisants ou menace future restent niveau 3 ». Re-test sur le sample audit avant mass re-annotation.
 
 ### Phase 2 — Fox & modèle tabulaire
 - **Fait** : code captions Fox (segments, lecture fichier), baselines / entraînement côté `evaluation` et `prediction` (dont MVP baseline calibrée).

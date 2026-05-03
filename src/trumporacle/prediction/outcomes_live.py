@@ -28,9 +28,9 @@ async def _trump_window_stats(
             JOIN items i ON i.raw_item_id = r.id
             JOIN sources s ON s.id = r.source_id
             LEFT JOIN (
-                SELECT item_id, MAX(valence_level) AS v
+                SELECT DISTINCT ON (item_id) item_id, valence_level AS v
                 FROM valence_annotations
-                GROUP BY item_id
+                ORDER BY item_id, annotated_at DESC, llm_labeler_version DESC
             ) ann ON ann.item_id = i.id
             WHERE COALESCE(s.metadata->>'trump_primary', 'false') = 'true'
               AND r.published_at >= :ws AND r.published_at < :we
@@ -51,9 +51,9 @@ async def _trump_recent_mean(session: AsyncSession, h: datetime) -> float:
         text(
             """
             WITH ann AS (
-                SELECT item_id, MAX(valence_level) AS v
+                SELECT DISTINCT ON (item_id) item_id, valence_level AS v
                 FROM valence_annotations
-                GROUP BY item_id
+                ORDER BY item_id, annotated_at DESC, llm_labeler_version DESC
             )
             SELECT COALESCE(AVG(ann.v)::double precision, 0.0) AS mu
             FROM ann

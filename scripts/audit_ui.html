@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trumporacle — Audit de rubrique</title>
+<style>
+  :root {
+    --bg: #0e0e10;
+    --bg-elev: #17171a;
+    --bg-card: #1d1d22;
+    --bg-soft: #25252b;
+    --border: #2c2c33;
+    --text: #e8e8ed;
+    --text-mute: #8a8a93;
+    --text-quiet: #5e5e66;
+    --accent: #5b9dff;
+    --accent-mute: #2c4a78;
+    --good: #4ad07a;
+    --warn: #f0a843;
+    --danger: #e25555;
+    --lvl0: #6b7280;
+    --lvl1: #4b89c4;
+    --lvl2: #4ab5b5;
+    --lvl3: #d4a64a;
+    --lvl4: #e3833a;
+    --lvl5: #d65555;
+    --lvl6: #a02d2d;
+    --shadow: 0 6px 20px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", "Inter", sans-serif; }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+
+  header {
+    position: sticky; top: 0; z-index: 5;
+    padding: 14px 24px;
+    background: linear-gradient(180deg, rgba(14,14,16,0.97), rgba(14,14,16,0.85));
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+  }
+  header h1 {
+    font-size: 15px; font-weight: 600; letter-spacing: .02em;
+    color: var(--text); margin: 0; flex: 0 0 auto;
+  }
+  header h1 .sub { color: var(--text-quiet); font-weight: 400; margin-left: 8px; }
+  header .progress { flex: 1 1 320px; min-width: 200px; }
+  header .progress-bar {
+    height: 6px; background: var(--bg-soft); border-radius: 3px; overflow: hidden;
+    margin-top: 6px;
+  }
+  header .progress-bar > div {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--good));
+    transition: width .25s ease;
+  }
+  header .progress-text { font-size: 12px; color: var(--text-mute); }
+  header .actions { display: flex; gap: 8px; flex: 0 0 auto; }
+
+  button, .btn, input[type="file"]::file-selector-button {
+    background: var(--bg-card); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+    font-family: inherit; transition: background .15s, border-color .15s;
+  }
+  button:hover, .btn:hover { background: var(--bg-soft); border-color: #404049; }
+  button.primary { background: var(--accent-mute); border-color: var(--accent); color: var(--text); }
+  button.primary:hover { background: var(--accent); }
+  button.danger { color: var(--danger); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  input[type="file"] { display: none; }
+  .file-label { display: inline-block; }
+
+  main {
+    flex: 1; padding: 28px 24px 80px;
+    max-width: 880px; margin: 0 auto; width: 100%;
+  }
+
+  .empty-state {
+    margin-top: 80px; text-align: center; color: var(--text-mute);
+  }
+  .empty-state h2 { color: var(--text); font-weight: 500; margin-bottom: 6px; }
+  .empty-state .hint { font-size: 13px; margin-top: 18px; }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 26px 28px; box-shadow: var(--shadow);
+  }
+  .card-meta {
+    font-size: 12px; color: var(--text-quiet); display: flex; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 20px; letter-spacing: .02em;
+  }
+  .card-meta .pill {
+    padding: 2px 8px; border-radius: 10px; background: var(--bg-soft);
+    color: var(--text-mute); font-size: 11px;
+  }
+  .card-text {
+    font-family: "Iowan Old Style", "Charter", "Georgia", serif;
+    font-size: 17px; line-height: 1.55; color: var(--text);
+    background: var(--bg-elev); border-radius: 8px;
+    padding: 22px 24px; border: 1px solid var(--border);
+    white-space: pre-wrap; word-wrap: break-word;
+    max-height: 500px; overflow-y: auto;
+  }
+
+  .level-row {
+    display: flex; gap: 8px; margin-top: 24px; flex-wrap: wrap; align-items: center;
+  }
+  .level-row .label {
+    font-size: 12px; color: var(--text-mute); margin-right: 8px;
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+  .level-btn {
+    width: 44px; height: 44px; border-radius: 8px;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    color: var(--text); font-size: 17px; font-weight: 600;
+    cursor: pointer; transition: transform .08s, background .12s, border-color .12s;
+    font-family: inherit;
+  }
+  .level-btn:hover { background: #2f2f36; }
+  .level-btn.active { transform: scale(1.05); border-width: 2px; }
+  .level-btn[data-lvl="0"].active { background: var(--lvl0); border-color: var(--lvl0); }
+  .level-btn[data-lvl="1"].active { background: var(--lvl1); border-color: var(--lvl1); }
+  .level-btn[data-lvl="2"].active { background: var(--lvl2); border-color: var(--lvl2); }
+  .level-btn[data-lvl="3"].active { background: var(--lvl3); border-color: var(--lvl3); color: #1a1a1d; }
+  .level-btn[data-lvl="4"].active { background: var(--lvl4); border-color: var(--lvl4); }
+  .level-btn[data-lvl="5"].active { background: var(--lvl5); border-color: var(--lvl5); }
+  .level-btn[data-lvl="6"].active { background: var(--lvl6); border-color: var(--lvl6); }
+
+  .level-legend {
+    margin-top: 12px; font-size: 12px; color: var(--text-mute);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 4px 18px;
+  }
+  .level-legend .swatch { display: inline-block; width: 10px; height: 10px;
+    border-radius: 2px; margin-right: 8px; vertical-align: middle; }
+
+  textarea#notes {
+    margin-top: 22px; width: 100%; min-height: 70px; resize: vertical;
+    background: var(--bg-elev); border: 1px solid var(--border);
+    color: var(--text); font-family: inherit; font-size: 14px;
+    border-radius: 8px; padding: 12px 14px; line-height: 1.5;
+  }
+  textarea#notes:focus { outline: 2px solid var(--accent-mute); border-color: var(--accent); }
+
+  details.llm-block {
+    margin-top: 22px; padding: 12px 16px;
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px;
+  }
+  details.llm-block summary {
+    cursor: pointer; color: var(--text-mute); user-select: none;
+    list-style: none; display: flex; align-items: center; gap: 6px;
+  }
+  details.llm-block summary::before {
+    content: "▶"; font-size: 9px; transition: transform .15s;
+  }
+  details.llm-block[open] summary::before { transform: rotate(90deg); }
+  details.llm-block .llm-fact { display: flex; gap: 16px; flex-wrap: wrap;
+    margin-top: 12px; font-size: 12px; color: var(--text-mute); }
+  details.llm-block .llm-fact b { color: var(--text); font-weight: 500; }
+  details.llm-block .rationale {
+    margin-top: 12px; padding: 10px 12px; background: var(--bg-soft);
+    border-radius: 6px; font-size: 13px; line-height: 1.55; color: var(--text);
+    white-space: pre-wrap;
+  }
+
+  .nav-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 28px; gap: 16px;
+  }
+  .nav-row .center { color: var(--text-mute); font-size: 13px; }
+  .nav-row input.jump {
+    width: 60px; background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text); border-radius: 5px; padding: 4px 8px;
+    font-family: inherit; text-align: center;
+  }
+
+  .save-toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 14px;
+    font-size: 12px; color: var(--text-mute);
+    opacity: 0; transition: opacity .25s;
+    pointer-events: none;
+  }
+  .save-toast.show { opacity: 1; }
+
+  kbd { background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 6px; font-size: 11px; font-family: ui-monospace, monospace; }
+
+  .filter-bar {
+    margin-bottom: 20px; display: flex; gap: 8px; flex-wrap: wrap;
+    font-size: 12px; color: var(--text-mute); align-items: center;
+  }
+  .filter-bar select {
+    background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text); border-radius: 5px; padding: 5px 10px;
+    font-family: inherit; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Audit de rubrique <span class="sub">Trumporacle · spec §4</span></h1>
+  <div class="progress">
+    <div class="progress-text" id="progress-text">Aucun fichier chargé</div>
+    <div class="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
+  </div>
+  <div class="actions">
+    <label class="file-label btn">
+      Charger JSONL
+      <input type="file" id="file-input" accept=".jsonl,application/json,text/plain">
+    </label>
+    <button id="export-btn" disabled>Exporter JSONL</button>
+    <button id="reset-btn" class="danger" disabled>Réinitialiser</button>
+  </div>
+</header>
+
+<main id="main">
+  <div class="empty-state">
+    <h2>Charge un fichier JSONL pour commencer</h2>
+    <div>Le fichier exporté par <code>scripts/audit_export</code> ou n'importe quel JSONL avec les champs
+      <code>item_id</code>, <code>clean_text</code>, <code>llm_level</code>.</div>
+    <div class="hint">
+      Raccourcis: <kbd>0</kbd>-<kbd>6</kbd> niveau · <kbd>←</kbd>/<kbd>→</kbd> ou <kbd>j</kbd>/<kbd>k</kbd>
+      naviguer · <kbd>n</kbd> focus notes · <kbd>l</kbd> afficher LLM
+    </div>
+  </div>
+</main>
+
+<div id="toast" class="save-toast">sauvegardé localement</div>
+
+<script>
+"use strict";
+
+const STORAGE_KEY = "trumporacle.audit.v1";
+const LEVEL_DESCRIPTIONS = {
+  0: "Neutre / factuel — annonces, communications, remerciements.",
+  1: "Critique politique normale — désaccord raisonné.",
+  2: "Raillerie / dérision — surnoms, moquerie.",
+  3: "Délégitimation — \"truqué\", \"corrompu\", \"illégal\".",
+  4: "Déshumanisation / ennemi désigné — \"vermine\", \"animaux\", \"parasites\".",
+  5: "Menace voilée — \"ils paieront\", \"ce sera leur fin\".",
+  6: "Action / menace explicite — appel direct à coercition / violence.",
+};
+
+// State
+let items = [];                 // loaded items (immutable shape from JSONL)
+let annotations = {};           // item_id -> {human_level, human_notes}
+let currentIdx = 0;             // current card index
+let filterMode = "all";         // "all" | "todo" | "done"
+
+// --- Persistence -------------------------------------------------------------
+function loadAnnotationsFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    annotations = raw ? JSON.parse(raw) : {};
+  } catch { annotations = {}; }
+}
+function saveAnnotation(itemId, patch) {
+  const prev = annotations[itemId] || { human_level: null, human_notes: "" };
+  annotations[itemId] = { ...prev, ...patch };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(annotations));
+  flashToast();
+}
+function clearAllAnnotations() {
+  if (!confirm("Effacer toutes les annotations locales ? Le fichier original n'est pas touché tant que tu n'exportes pas.")) return;
+  annotations = {};
+  localStorage.removeItem(STORAGE_KEY);
+  render();
+}
+function flashToast() {
+  const t = document.getElementById("toast");
+  t.classList.add("show");
+  clearTimeout(flashToast._timer);
+  flashToast._timer = setTimeout(() => t.classList.remove("show"), 900);
+}
+
+// --- File I/O ---------------------------------------------------------------
+async function handleFileLoad(file) {
+  const text = await file.text();
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+  const parsed = [];
+  for (const [i, line] of lines.entries()) {
+    try {
+      const obj = JSON.parse(line);
+      if (typeof obj.item_id === "undefined") {
+        console.warn(`line ${i + 1}: missing item_id, skipped`);
+        continue;
+      }
+      parsed.push(obj);
+      // Pre-seed local annotations from the file if it already has values.
+      const id = String(obj.item_id);
+      if (!annotations[id] && (obj.human_level !== null || obj.human_notes)) {
+        annotations[id] = {
+          human_level: obj.human_level !== null ? Number(obj.human_level) : null,
+          human_notes: obj.human_notes || "",
+        };
+      }
+    } catch (e) {
+      console.error(`line ${i + 1} parse error:`, e);
+    }
+  }
+  items = parsed;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(annotations));
+  currentIdx = nextUnannotatedIdx() ?? 0;
+  document.getElementById("export-btn").disabled = false;
+  document.getElementById("reset-btn").disabled = false;
+  render();
+}
+
+function exportJsonl() {
+  const out = items.map(it => {
+    const a = annotations[String(it.item_id)] || {};
+    return {
+      ...it,
+      human_level: typeof a.human_level === "number" ? a.human_level : null,
+      human_notes: a.human_notes || "",
+    };
+  });
+  const text = out.map(o => JSON.stringify(o)).join("\n") + "\n";
+  const blob = new Blob([text], { type: "application/x-ndjson" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "rubric_audit.jsonl";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 200);
+}
+
+// --- Helpers ----------------------------------------------------------------
+function annotated(itemId) {
+  const a = annotations[String(itemId)];
+  return !!(a && typeof a.human_level === "number");
+}
+function visibleIndices() {
+  if (filterMode === "todo") return items.map((_, i) => i).filter(i => !annotated(items[i].item_id));
+  if (filterMode === "done") return items.map((_, i) => i).filter(i =>  annotated(items[i].item_id));
+  return items.map((_, i) => i);
+}
+function nextUnannotatedIdx() {
+  for (let i = 0; i < items.length; i++) {
+    if (!annotated(items[i].item_id)) return i;
+  }
+  return null;
+}
+function clamp(idx) {
+  const vis = visibleIndices();
+  if (vis.length === 0) return null;
+  if (!vis.includes(idx)) return vis[0];
+  return idx;
+}
+
+// --- Rendering --------------------------------------------------------------
+function render() {
+  const main = document.getElementById("main");
+  if (items.length === 0) {
+    return; // empty state already in HTML
+  }
+  main.innerHTML = "";
+
+  // Filter / progress
+  const total = items.length;
+  const done = items.filter(it => annotated(it.item_id)).length;
+  document.getElementById("progress-text").textContent = `${done} / ${total} annotés`;
+  document.getElementById("progress-fill").style.width = `${(done / total) * 100}%`;
+
+  // Filter bar
+  const fb = document.createElement("div");
+  fb.className = "filter-bar";
+  fb.innerHTML = `
+    <span>Affichage :</span>
+    <select id="filter-select">
+      <option value="all"${filterMode==="all"?" selected":""}>Tous (${total})</option>
+      <option value="todo"${filterMode==="todo"?" selected":""}>À faire (${total - done})</option>
+      <option value="done"${filterMode==="done"?" selected":""}>Annotés (${done})</option>
+    </select>
+    <span style="flex:1"></span>
+    <span>Aller à <input class="jump" id="jump-input" type="number" min="1" max="${total}"
+      value="${currentIdx + 1}"> / ${total}</span>
+  `;
+  main.appendChild(fb);
+  fb.querySelector("#filter-select").addEventListener("change", e => {
+    filterMode = e.target.value;
+    currentIdx = clamp(currentIdx) ?? 0;
+    render();
+  });
+  fb.querySelector("#jump-input").addEventListener("change", e => {
+    const v = parseInt(e.target.value, 10);
+    if (!isNaN(v) && v >= 1 && v <= total) {
+      currentIdx = v - 1;
+      render();
+    }
+  });
+
+  const visible = visibleIndices();
+  if (visible.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.innerHTML = `<h2>Rien à afficher dans ce filtre.</h2>`;
+    main.appendChild(empty);
+    return;
+  }
+  if (!visible.includes(currentIdx)) currentIdx = visible[0];
+
+  const item = items[currentIdx];
+  const a = annotations[String(item.item_id)] || {};
+  const card = document.createElement("section");
+  card.className = "card";
+
+  // Meta
+  const meta = document.createElement("div");
+  meta.className = "card-meta";
+  meta.innerHTML = `
+    <span class="pill">item ${item.item_id}</span>
+    <span class="pill">${escapeHtml(item.source_kind || "")}</span>
+    <span class="pill">${escapeHtml(item.source_name || "")}</span>
+    ${annotated(item.item_id) ? `<span class="pill" style="background:#1f3320;color:var(--good)">✓ annoté</span>` : ""}
+  `;
+  card.appendChild(meta);
+
+  // Text
+  const text = document.createElement("div");
+  text.className = "card-text";
+  text.textContent = item.clean_text || "(empty)";
+  card.appendChild(text);
+
+  // Level row
+  const lvlRow = document.createElement("div");
+  lvlRow.className = "level-row";
+  lvlRow.innerHTML = `<span class="label">Ton niveau</span>`;
+  for (let lvl = 0; lvl <= 6; lvl++) {
+    const b = document.createElement("button");
+    b.className = "level-btn" + (a.human_level === lvl ? " active" : "");
+    b.dataset.lvl = String(lvl);
+    b.textContent = String(lvl);
+    b.title = LEVEL_DESCRIPTIONS[lvl];
+    b.addEventListener("click", () => setLevel(item.item_id, lvl));
+    lvlRow.appendChild(b);
+  }
+  card.appendChild(lvlRow);
+
+  // Legend (compact)
+  const legend = document.createElement("div");
+  legend.className = "level-legend";
+  for (let lvl = 0; lvl <= 6; lvl++) {
+    const div = document.createElement("div");
+    div.innerHTML = `<span class="swatch" style="background:var(--lvl${lvl})"></span>${lvl} — ${LEVEL_DESCRIPTIONS[lvl]}`;
+    legend.appendChild(div);
+  }
+  card.appendChild(legend);
+
+  // Notes
+  const notes = document.createElement("textarea");
+  notes.id = "notes";
+  notes.placeholder = "Notes optionnelles (ton raisonnement, ce qui te fait hésiter…)";
+  notes.value = a.human_notes || "";
+  notes.addEventListener("input", () => saveAnnotation(item.item_id, { human_notes: notes.value }));
+  card.appendChild(notes);
+
+  // LLM block (collapsed)
+  const llm = document.createElement("details");
+  llm.className = "llm-block";
+  llm.id = "llm-block";
+  const conf = item.llm_confidence != null ? `· confiance ${Number(item.llm_confidence).toFixed(2)}` : "";
+  llm.innerHTML = `
+    <summary>Voir la réponse du LLM (après ton choix)</summary>
+    <div class="llm-fact">
+      <span><b>Niveau LLM :</b> ${item.llm_level} ${conf}</span>
+      <span><b>Cible :</b> ${escapeHtml(item.llm_target_type || "")} ${item.llm_target_name ? "· " + escapeHtml(item.llm_target_name) : ""}</span>
+    </div>
+    <div class="rationale">${escapeHtml(item.llm_rationale || "(pas de rationale)")}</div>
+  `;
+  card.appendChild(llm);
+
+  // Nav
+  const nav = document.createElement("div");
+  nav.className = "nav-row";
+  const visibleIdxOfCurrent = visible.indexOf(currentIdx) + 1;
+  nav.innerHTML = `
+    <button id="prev-btn" ${visibleIdxOfCurrent <= 1 ? "disabled" : ""}>← Précédent</button>
+    <span class="center">item ${visibleIdxOfCurrent} / ${visible.length} dans le filtre · global ${currentIdx + 1} / ${total}</span>
+    <button id="next-btn" class="primary" ${visibleIdxOfCurrent >= visible.length ? "disabled" : ""}>Suivant →</button>
+  `;
+  card.appendChild(nav);
+  main.appendChild(card);
+
+  document.getElementById("prev-btn").addEventListener("click", goPrev);
+  document.getElementById("next-btn").addEventListener("click", goNext);
+}
+
+function setLevel(itemId, lvl) {
+  saveAnnotation(itemId, { human_level: lvl });
+  render();
+  // Auto-advance: jump to next unannotated within current filter.
+  const visible = visibleIndices();
+  if (filterMode === "todo") {
+    // After saving, this item is no longer "todo"; render() will move us to next.
+  } else {
+    const pos = visible.indexOf(currentIdx);
+    if (pos >= 0 && pos < visible.length - 1) {
+      currentIdx = visible[pos + 1];
+      render();
+    }
+  }
+}
+function goPrev() {
+  const visible = visibleIndices();
+  const pos = visible.indexOf(currentIdx);
+  if (pos > 0) { currentIdx = visible[pos - 1]; render(); }
+}
+function goNext() {
+  const visible = visibleIndices();
+  const pos = visible.indexOf(currentIdx);
+  if (pos < visible.length - 1) { currentIdx = visible[pos + 1]; render(); }
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+// --- Keyboard shortcuts -----------------------------------------------------
+document.addEventListener("keydown", e => {
+  // Ignore when typing in an input/textarea (except Escape to blur).
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "textarea" || tag === "input") {
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
+  if (items.length === 0) return;
+  const item = items[currentIdx];
+  if (!item) return;
+
+  if (/^[0-6]$/.test(e.key)) {
+    setLevel(item.item_id, parseInt(e.key, 10));
+    e.preventDefault();
+  } else if (e.key === "ArrowRight" || e.key === "j") { goNext(); e.preventDefault(); }
+  else if (e.key === "ArrowLeft" || e.key === "k")   { goPrev(); e.preventDefault(); }
+  else if (e.key === "n") {
+    const t = document.getElementById("notes"); if (t) { t.focus(); e.preventDefault(); }
+  } else if (e.key === "l") {
+    const d = document.getElementById("llm-block"); if (d) { d.open = !d.open; e.preventDefault(); }
+  }
+});
+
+// --- Init -------------------------------------------------------------------
+loadAnnotationsFromStorage();
+document.getElementById("file-input").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0];
+  if (f) handleFileLoad(f);
+});
+document.getElementById("export-btn").addEventListener("click", exportJsonl);
+document.getElementById("reset-btn").addEventListener("click", clearAllAnnotations);
+</script>
+</body>
+</html>
