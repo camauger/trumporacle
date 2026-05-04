@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -14,6 +16,12 @@ from sqlalchemy import text
 from starlette.templating import Jinja2Templates
 
 from trumporacle import __version__
+from trumporacle.dashboard.queries import (
+    fetch_calibration,
+    fetch_current_prediction,
+    fetch_history,
+    fetch_recent_escalations,
+)
 from trumporacle.orchestration import jobs
 from trumporacle.storage.db import async_session_scope
 
@@ -64,6 +72,34 @@ async def index(request: Request) -> HTMLResponse:
         request,
         "index.html.j2",
         {"title": "TRUMPORACLE", "version": __version__},
+    )
+
+
+@app.get("/escalation-now", response_class=HTMLResponse)
+async def escalation_now(request: Request) -> HTMLResponse:
+    REQUESTS.labels(path="/escalation-now").inc()
+    now = datetime.now(tz=UTC)
+    async with async_session_scope() as session:
+        current = await fetch_current_prediction(session, now)
+        history = await fetch_history(session, now)
+        events = await fetch_recent_escalations(session)
+        calib_4 = await fetch_calibration(session, target="c2_4")
+        calib_5 = await fetch_calibration(session, target="c2_5")
+    return _templates.TemplateResponse(
+        request,
+        "escalation_now.html.j2",
+        {
+            "title": "Escalation now",
+            "version": __version__,
+            "now_iso": now.isoformat(timespec="seconds"),
+            "current": current,
+            "history_json": [asdict(h) for h in history],
+            "events": events,
+            "calibrations_json": {
+                "c2_4": asdict(calib_4),
+                "c2_5": asdict(calib_5),
+            },
+        },
     )
 
 

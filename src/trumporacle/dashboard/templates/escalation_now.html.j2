@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ title }} — TRUMPORACLE</title>
+<style>
+  :root {
+    --bg: #0e0e10;
+    --bg-elev: #17171a;
+    --bg-card: #1d1d22;
+    --bg-soft: #25252b;
+    --border: #2c2c33;
+    --text: #e8e8ed;
+    --text-mute: #8a8a93;
+    --text-quiet: #5e5e66;
+    --good: #4ad07a;
+    --warn: #f0a843;
+    --danger: #e25555;
+    --c4: #5b9dff;
+    --c5: #f0a843;
+    --c6: #e25555;
+    --grid: #2c2c33;
+    --shadow: 0 6px 20px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", "Inter", sans-serif; }
+  body { min-height: 100vh; }
+  nav {
+    padding: 12px 24px; border-bottom: 1px solid var(--border);
+    background: rgba(14,14,16,0.97);
+    font-size: 13px; color: var(--text-mute);
+  }
+  nav a { color: var(--text-mute); margin-right: 14px; text-decoration: none; }
+  nav a:hover { color: var(--text); }
+  nav .now { float: right; color: var(--text-quiet); font-size: 12px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 80px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; letter-spacing: .02em; }
+  h1 .sub { color: var(--text-quiet); font-weight: 400; font-size: 14px; margin-left: 8px; }
+  h2 {
+    font-size: 13px; font-weight: 500; margin: 36px 0 14px;
+    color: var(--text-mute); letter-spacing: .12em; text-transform: uppercase;
+  }
+  .meta { color: var(--text-quiet); font-size: 13px; margin-bottom: 6px; }
+  code { font-family: ui-monospace, "Cascadia Code", monospace;
+    background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  /* Current window cards */
+  .current-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px; margin-top: 4px; }
+  .prob-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px 24px; box-shadow: var(--shadow);
+  }
+  .prob-card .label { font-size: 12px; color: var(--text-mute);
+    letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; }
+  .prob-card .value { font-size: 42px; font-weight: 600; line-height: 1; letter-spacing: -.01em; }
+  .prob-card .value .pct { font-size: 22px; color: var(--text-mute); margin-left: 4px; }
+  .prob-card .bar {
+    margin-top: 14px; height: 6px; background: var(--bg-soft); border-radius: 3px; overflow: hidden;
+  }
+  .prob-card .bar > div { height: 100%; transition: width .3s ease; }
+  .prob-card.c4 .bar > div { background: var(--c4); }
+  .prob-card.c5 .bar > div { background: var(--c5); }
+  .prob-card .meta { margin-top: 12px; font-size: 12px; color: var(--text-quiet); }
+
+  /* Time series chart */
+  .chart-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow);
+  }
+  .chart-legend { display: flex; gap: 18px; font-size: 12px; color: var(--text-mute);
+    margin-bottom: 8px; flex-wrap: wrap; }
+  .chart-legend .swatch { display: inline-block; width: 10px; height: 10px;
+    border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  svg { width: 100%; display: block; }
+  svg .axis { stroke: var(--grid); stroke-width: 1; }
+  svg .axis-label { fill: var(--text-quiet); font-size: 11px; }
+  svg .grid-line { stroke: var(--bg-soft); stroke-width: 1; stroke-dasharray: 2 3; }
+  svg .line-c4 { fill: none; stroke: var(--c4); stroke-width: 1.5; }
+  svg .line-c5 { fill: none; stroke: var(--c5); stroke-width: 1.5; }
+  svg .event-dot { fill: var(--danger); stroke: var(--bg); stroke-width: 1; }
+  svg .calib-bar { stroke: var(--text-mute); stroke-width: 1; }
+  svg .calib-point { fill: var(--c4); stroke: var(--bg-card); stroke-width: 1.5; }
+  svg .calib-point.c5 { fill: var(--c5); }
+  svg .ref-line { stroke: var(--text-quiet); stroke-width: 1; stroke-dasharray: 4 4; opacity: .5; }
+
+  /* Escalation events */
+  .event-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-left: 3px solid var(--danger);
+    border-radius: 8px; padding: 14px 18px; margin-bottom: 12px;
+  }
+  .event-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+    font-size: 12px; color: var(--text-mute); margin-bottom: 8px; }
+  .event-head .vmax { font-weight: 600; color: var(--danger); font-size: 14px; }
+  .event-head .jump { color: var(--warn); }
+  .event-post { font-family: "Iowan Old Style", "Charter", "Georgia", serif;
+    font-size: 14px; line-height: 1.5;
+    background: var(--bg-elev); padding: 10px 14px; border-radius: 6px;
+    margin-top: 6px; white-space: pre-wrap; color: var(--text); }
+  .event-post .more { color: var(--text-quiet); font-style: italic; }
+
+  /* Calibration grid */
+  .calib-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px; }
+  .calib-card { background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .calib-card h3 { font-size: 14px; margin: 0 0 6px; color: var(--text); font-weight: 500; }
+  .calib-card .ece-row { font-size: 12px; color: var(--text-mute); margin-bottom: 10px; }
+  .calib-card .ece-row b { color: var(--text); font-weight: 500; }
+
+  .empty { color: var(--text-quiet); font-style: italic; padding: 18px 0; }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/">Home</a> · <a href="/escalation-now">Escalation now</a> · <a href="/predictions">Predictions</a> · <a href="/health">Health</a>
+  <span class="now">last refresh {{ now_iso }}Z</span>
+</nav>
+
+<main>
+
+<h1>Escalation now <span class="sub">v {{ version }}</span></h1>
+<p class="meta">
+  Probabilité calibrée que la valence Trump franchisse un seuil dans la fenêtre 2 h en cours,
+  d'après le modèle <code>{{ current.model_version if current else "—" }}</code>.
+</p>
+
+<h2>Fenêtre courante</h2>
+{% if current %}
+<div class="meta">{{ current.window_start.strftime("%Y-%m-%d %H:%M") }} → {{ current.window_end.strftime("%H:%M") }} UTC
+  · prédiction faite à {{ current.made_at.strftime("%H:%M:%S") }} UTC</div>
+<div class="current-row">
+  <div class="prob-card c4">
+    <div class="label">P(v_max ≥ 4) — déshumanisation</div>
+    <div class="value">{{ "%.1f"|format(current.c2_4 * 100) }}<span class="pct">%</span></div>
+    <div class="bar"><div style="width: {{ (current.c2_4 * 100)|round(1) }}%"></div></div>
+    <div class="meta">P(≥3)={{ "%.0f"|format(current.c2_3 * 100) }}% · P(saut)={{ "%.0f"|format(current.c3 * 100) }}% · P(≥1 post)={{ "%.0f"|format(current.c4 * 100) }}%</div>
+  </div>
+  <div class="prob-card c5">
+    <div class="label">P(v_max ≥ 5) — menace voilée</div>
+    <div class="value">{{ "%.1f"|format(current.c2_5 * 100) }}<span class="pct">%</span></div>
+    <div class="bar"><div style="width: {{ (current.c2_5 * 100)|round(1) }}%"></div></div>
+    <div class="meta">P(≥6 menace explicite)={{ "%.1f"|format(current.c2_6 * 100) }}%</div>
+  </div>
+</div>
+{% else %}
+<p class="empty">Aucune prédiction disponible pour la fenêtre courante. Le scheduler tournera au prochain quart d'heure.</p>
+{% endif %}
+
+<h2>Évolution 7 jours</h2>
+<div class="chart-card">
+  <div class="chart-legend">
+    <span><span class="swatch" style="background: var(--c4)"></span>P(v_max ≥ 4)</span>
+    <span><span class="swatch" style="background: var(--c5)"></span>P(v_max ≥ 5)</span>
+    <span><span class="swatch" style="background: var(--danger); border-radius:50%"></span>v_max ≥ 4 observé</span>
+  </div>
+  <svg id="history-chart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
+</div>
+
+<h2>Dernières escalades observées (v_max ≥ {{ events[0].v_max if events else 3 }})</h2>
+{% if events %}
+{% for ev in events %}
+<div class="event-card">
+  <div class="event-head">
+    <span class="vmax">v_max = {{ ev.v_max }}</span>
+    <span>· {{ ev.window_start.strftime("%Y-%m-%d %H:%M") }} → {{ ev.window_end.strftime("%H:%M") }} UTC</span>
+    <span>· {{ ev.n_posts }} post(s)</span>
+    {% if ev.had_jump %}<span class="jump">· saut détecté</span>{% endif %}
+  </div>
+  {% for post in ev.posts %}
+  <div class="event-post">{{ post }}{% if post|length >= 280 %}<span class="more"> …</span>{% endif %}</div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% else %}
+<p class="empty">Aucune escalade observée à ce niveau dans la période.</p>
+{% endif %}
+
+<h2>Calibration (4 dernières semaines)</h2>
+<div class="calib-row">
+  <div class="calib-card">
+    <h3>P(v_max ≥ 4) — calibration</h3>
+    <div class="ece-row" id="ece-c4"></div>
+    <svg id="calib-c4" viewBox="0 0 280 280"></svg>
+  </div>
+  <div class="calib-card">
+    <h3>P(v_max ≥ 5) — calibration</h3>
+    <div class="ece-row" id="ece-c5"></div>
+    <svg id="calib-c5" viewBox="0 0 280 280"></svg>
+  </div>
+</div>
+
+<script id="history-data" type="application/json">{{ history_json|tojson }}</script>
+<script id="calibration-data" type="application/json">{{ calibrations_json|tojson }}</script>
+
+<script>
+"use strict";
+
+const HISTORY = JSON.parse(document.getElementById("history-data").textContent);
+const CALIB = JSON.parse(document.getElementById("calibration-data").textContent);
+
+// ----- Helpers -------------------------------------------------------------
+function svgEl(name, attrs = {}) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+// ----- Time-series chart ---------------------------------------------------
+function drawHistory() {
+  const svg = document.getElementById("history-chart");
+  const W = 900, H = 220, M = { top: 12, right: 16, bottom: 28, left: 36 };
+  const innerW = W - M.left - M.right;
+  const innerH = H - M.top - M.bottom;
+
+  if (HISTORY.length < 2) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle"
+      class="axis-label">Pas assez d'historique pour tracer (${HISTORY.length} point(s))</text>`;
+    return;
+  }
+
+  const tMin = HISTORY[0].window_start_ts;
+  const tMax = HISTORY[HISTORY.length - 1].window_start_ts;
+  const tRange = Math.max(1, tMax - tMin);
+  const xOf = t => M.left + ((t - tMin) / tRange) * innerW;
+  const yOf = p => M.top + (1 - p) * innerH;
+
+  // Grid lines + y labels at 0, 0.25, 0.5, 0.75, 1
+  for (const y of [0, 0.25, 0.5, 0.75, 1.0]) {
+    svg.appendChild(svgEl("line", {
+      class: "grid-line", x1: M.left, x2: M.left + innerW, y1: yOf(y), y2: yOf(y),
+    }));
+    const t = svgEl("text", { class: "axis-label", x: M.left - 6, y: yOf(y) + 3, "text-anchor": "end" });
+    t.textContent = (y * 100).toFixed(0) + "%";
+    svg.appendChild(t);
+  }
+
+  // X axis ticks: one per day
+  const dayMs = 86400;
+  let firstDay = Math.ceil(tMin / dayMs) * dayMs;
+  for (let t = firstDay; t <= tMax; t += dayMs) {
+    const d = new Date(t * 1000);
+    const t2 = svgEl("text", {
+      class: "axis-label",
+      x: xOf(t), y: H - M.bottom + 14, "text-anchor": "middle",
+    });
+    t2.textContent = d.toISOString().slice(5, 10); // MM-DD
+    svg.appendChild(t2);
+    svg.appendChild(svgEl("line", {
+      class: "grid-line", x1: xOf(t), x2: xOf(t), y1: M.top, y2: M.top + innerH,
+    }));
+  }
+
+  // Lines for c2_4 and c2_5
+  for (const [target, cls] of [["c2_4", "line-c4"], ["c2_5", "line-c5"]]) {
+    let path = "";
+    let started = false;
+    for (const p of HISTORY) {
+      const v = p[target];
+      if (v == null) { started = false; continue; }
+      const x = xOf(p.window_start_ts), y = yOf(v);
+      path += (started ? " L" : "M") + x.toFixed(1) + " " + y.toFixed(1);
+      started = true;
+    }
+    if (path) svg.appendChild(svgEl("path", { class: cls, d: path }));
+  }
+
+  // Event dots: v_max >= 4
+  for (const p of HISTORY) {
+    if (p.v_max != null && p.v_max >= 4) {
+      svg.appendChild(svgEl("circle", {
+        class: "event-dot",
+        cx: xOf(p.window_start_ts), cy: yOf(0.95), r: 4,
+      }));
+    }
+  }
+
+  // Axis lines
+  svg.appendChild(svgEl("line", { class: "axis", x1: M.left, x2: M.left,
+    y1: M.top, y2: M.top + innerH }));
+  svg.appendChild(svgEl("line", { class: "axis", x1: M.left, x2: M.left + innerW,
+    y1: M.top + innerH, y2: M.top + innerH }));
+}
+
+// ----- Calibration plot ----------------------------------------------------
+function drawCalibration(svgId, eceId, data, accentClass = "") {
+  const svg = document.getElementById(svgId);
+  const ece = document.getElementById(eceId);
+  const W = 280, H = 280, M = { top: 14, right: 14, bottom: 36, left: 36 };
+  const innerW = W - M.left - M.right;
+  const innerH = H - M.top - M.bottom;
+
+  ece.innerHTML = data.n_total === 0
+    ? `<i>n=0 — pas de fenêtres fermées dans la période</i>`
+    : `<b>ECE = ${data.ece.toFixed(3)}</b> · n=${data.n_total} fenêtres`;
+
+  if (data.n_total === 0) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle"
+      class="axis-label">no data</text>`;
+    return;
+  }
+
+  const xOf = p => M.left + p * innerW;
+  const yOf = p => M.top + (1 - p) * innerH;
+
+  // Grid + axis labels at 0, 0.5, 1
+  for (const v of [0, 0.5, 1]) {
+    svg.appendChild(svgEl("line", { class: "grid-line",
+      x1: xOf(v), x2: xOf(v), y1: M.top, y2: M.top + innerH }));
+    svg.appendChild(svgEl("line", { class: "grid-line",
+      x1: M.left, x2: M.left + innerW, y1: yOf(v), y2: yOf(v) }));
+    const tx = svgEl("text", { class: "axis-label",
+      x: xOf(v), y: H - M.bottom + 12, "text-anchor": "middle" });
+    tx.textContent = (v * 100).toFixed(0) + "%";
+    svg.appendChild(tx);
+    const ty = svgEl("text", { class: "axis-label",
+      x: M.left - 6, y: yOf(v) + 3, "text-anchor": "end" });
+    ty.textContent = (v * 100).toFixed(0) + "%";
+    svg.appendChild(ty);
+  }
+
+  // Diagonal reference
+  svg.appendChild(svgEl("line", { class: "ref-line",
+    x1: xOf(0), y1: yOf(0), x2: xOf(1), y2: yOf(1) }));
+
+  // Bin points (size by sqrt(n))
+  const maxN = Math.max(...data.bins.map(b => b.n), 1);
+  for (const b of data.bins) {
+    const r = 3 + 7 * Math.sqrt(b.n / maxN);
+    // Vertical bar from (predicted, observed) to diagonal at (predicted, predicted)
+    svg.appendChild(svgEl("line", {
+      class: "calib-bar",
+      x1: xOf(b.predicted_mean), x2: xOf(b.predicted_mean),
+      y1: yOf(b.predicted_mean), y2: yOf(b.observed_rate),
+    }));
+    svg.appendChild(svgEl("circle", {
+      class: "calib-point" + (accentClass ? " " + accentClass : ""),
+      cx: xOf(b.predicted_mean), cy: yOf(b.observed_rate), r: r.toFixed(1),
+    }));
+  }
+
+  // Axis labels
+  const xlabel = svgEl("text", {
+    class: "axis-label", x: M.left + innerW / 2, y: H - 6, "text-anchor": "middle",
+  });
+  xlabel.textContent = "predicted";
+  svg.appendChild(xlabel);
+  const ylabel = svgEl("text", {
+    class: "axis-label", x: 12, y: M.top + innerH / 2,
+    transform: `rotate(-90 12 ${M.top + innerH / 2})`, "text-anchor": "middle",
+  });
+  ylabel.textContent = "observed";
+  svg.appendChild(ylabel);
+}
+
+drawHistory();
+drawCalibration("calib-c4", "ece-c4", CALIB.c2_4);
+drawCalibration("calib-c5", "ece-c5", CALIB.c2_5, "c5");
+</script>
+
+</main>
+</body>
+</html>

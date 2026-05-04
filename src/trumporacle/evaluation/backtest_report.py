@@ -204,6 +204,45 @@ def b1_marginals(train: list[WindowRow]) -> B1Marginals:
     )
 
 
+def bin_from_eco(eco_mean: float) -> int:
+    """Map ``eco_mean_6h`` continuous in [0, 6] to integer bin in 0..6.
+
+    Round-half-up to nearest int, clip to the 0..6 range.
+    """
+
+    return max(0, min(6, int(eco_mean + 0.5)))
+
+
+def b4_calibrated_probs(train: list[WindowRow]) -> dict[int, dict[int, float]]:
+    """B4 calibrated: empirical ``P(v_max >= k | bin(eco_mean_6h))`` per threshold.
+
+    Returns ``{k: {bin_idx: prob}}`` for ``k`` in :data:`THRESHOLDS` and
+    ``bin_idx`` in 0..6. Bins with no training samples fall back to the
+    marginal rate (B1) for that threshold so the test set never gets
+    NaN/missing values.
+    """
+
+    if not train:
+        return {k: {b: 0.0 for b in range(7)} for k in THRESHOLDS}
+
+    by_bin: dict[int, list[WindowRow]] = {b: [] for b in range(7)}
+    for w in train:
+        by_bin[bin_from_eco(w.eco_mean_6h)].append(w)
+
+    marginals = {k: sum(1 for w in train if w.v_max >= k) / len(train) for k in THRESHOLDS}
+
+    out: dict[int, dict[int, float]] = {}
+    for k in THRESHOLDS:
+        out[k] = {}
+        for bin_idx in range(7):
+            bucket = by_bin[bin_idx]
+            if bucket:
+                out[k][bin_idx] = sum(1 for w in bucket if w.v_max >= k) / len(bucket)
+            else:
+                out[k][bin_idx] = marginals[k]
+    return out
+
+
 def baselines_for_test(
     train: list[WindowRow], test: list[WindowRow]
 ) -> dict[str, dict[tuple[datetime, datetime], dict[str, float]]]:
@@ -213,9 +252,12 @@ def baselines_for_test(
     - B2/B3/B4 cover C2.k only; missing targets are reported as ``n=0`` downstream.
     - B3 uses ``v_max`` of the immediately preceding window in the merged
       chronological sequence; the very first test window falls back to B1 marginals.
+    - B4 is calibrated: per-threshold ``P(v_max >= k | bin(eco_mean_6h))``
+      learned on the train set, with marginal fallback for empty bins.
     """
 
     m = b1_marginals(train)
+    b4_table = b4_calibrated_probs(train)
     full_seq = sorted(train + test, key=lambda w: w.window_start)
     prev_vmax: dict[tuple[datetime, datetime], int | None] = {}
     last_vmax: int | None = None
@@ -235,11 +277,12 @@ def baselines_for_test(
         b2: dict[str, float] = {}
         b3: dict[str, float] = {}
         b4: dict[str, float] = {}
+        eco_bin = bin_from_eco(w.eco_mean_6h)
         for k in THRESHOLDS:
             col = f"c2_{k}_prob"
             b1[col] = float(m.threshold_rates[k])
             b2[col] = 1.0 if w.v_recent >= float(k) else 0.0
-            b4[col] = 1.0 if w.eco_mean_6h >= float(k) else 0.0
+            b4[col] = b4_table[k][eco_bin]
             prev = prev_vmax[key]
             b3[col] = float(m.threshold_rates[k]) if prev is None else (1.0 if prev >= k else 0.0)
         b1["c3_prob"] = m.jump_rate
@@ -380,6 +423,7 @@ async def build_backtest_report(
     eco_posts_test = sum(w.eco_n_6h for w in test)
     if eco_posts_test == 0:
         notes.append("no_ecosystem_data_b4_degenerate")
+    notes.append("b4_calibrated_via_eco_bins_7")
 
     score_sets: list[ScoreSet] = []
 
